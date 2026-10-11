@@ -23,6 +23,8 @@ import { parseHealthExport, type ParseStats } from "../src/ingest/healthExport.j
 import { WorkoutRepository } from "../src/storage/workoutRepository.js";
 import { BodyWeightRepository } from "../src/storage/bodyWeightRepository.js";
 import { dailyWeights, type WeightReading } from "../src/domain/bodyWeight.js";
+import { RecoveryRepository } from "../src/storage/recoveryRepository.js";
+import { dailyRecovery, type RecoverySample } from "../src/domain/recovery.js";
 
 const BATCH_SIZE = 100;
 
@@ -71,7 +73,8 @@ async function main(): Promise<void> {
   // requires date order — and Apple's export is not reliably chronological.
   const all: WorkoutInput[] = [];
   const readings: WeightReading[] = [];
-  for await (const input of parseHealthExport(file, stats, { onBodyMass: (r) => readings.push(r) })) all.push(input);
+  const recoverySamples: RecoverySample[] = [];
+  for await (const input of parseHealthExport(file, stats, { onBodyMass: (r) => readings.push(r), onRecovery: (s) => recoverySamples.push(s) })) all.push(input);
   all.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   // --since only limits what is written; earlier rows still inform the reference max.
   const observations = all.map((w) => ({ startedAt: w.startedAt, maxHeartRate: w.maxHeartRate }));
@@ -117,7 +120,20 @@ async function main(): Promise<void> {
     weightsWritten = await weightRepo.upsertMany(weights);
   }
 
+  // Recovery: sleep, resting HR, HRV and the overnight signals, one merged row per day.
+  const recoveryDays = dailyRecovery({ samples: recoverySamples }, "health-export").filter((d) => !since || d.date >= since.toISOString().slice(0, 10));
+  let recoveryWritten = 0;
+  if (recoveryDays.length > 0 && target) {
+    const recoveryRepo = RecoveryRepository.fromConnectionString(target.storageConnectionString, target.userId);
+    await recoveryRepo.ensureTable();
+    recoveryWritten = await recoveryRepo.upsertMany(recoveryDays);
+  }
+
   process.stdout.write("\r");
+  if (recoverySamples.length) {
+    const nights = recoveryDays.filter((d) => d.sleepAsleepSeconds !== undefined).length;
+    console.log(`Recovery records   : ${recoverySamples.length} → ${recoveryDays.length} days, ${nights} nights${values["dry-run"] ? " (would write)" : ` (${recoveryWritten} written)`}`);
+  }
   if (readings.length) {
     console.log(`Weight readings    : ${readings.length} → ${weights.length} days${values["dry-run"] ? " (would write)" : ` (${weightsWritten} written)`}`);
   }

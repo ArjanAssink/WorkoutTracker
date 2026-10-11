@@ -5,6 +5,7 @@ import type { WorkoutInput } from "../domain/workout.js";
 import { normaliseActivityType, relabelActivity } from "../domain/activityType.js";
 import { parseAppleDate } from "./shortcutPayload.js";
 import { toKg, type WeightReading } from "../domain/bodyWeight.js";
+import type { RecoveryMetric, RecoverySample, SleepStage } from "../domain/recovery.js";
 import { toKcal, toMeters, toSeconds } from "./units.js";
 
 /**
@@ -121,6 +122,41 @@ export interface ParseHooks {
    * out a few hundred weigh-ins would double the import time.
    */
   onBodyMass?: (reading: WeightReading) => void;
+  /** Sleep stages, resting heart rate, HRV and the other overnight records — same side channel. */
+  onRecovery?: (sample: RecoverySample) => void;
+}
+
+const RECOVERY_TYPES: Record<string, RecoveryMetric> = {
+  HKCategoryTypeIdentifierSleepAnalysis: "sleep",
+  HKQuantityTypeIdentifierRestingHeartRate: "restingHeartRate",
+  HKQuantityTypeIdentifierHeartRateVariabilitySDNN: "hrv",
+  HKQuantityTypeIdentifierRespiratoryRate: "respiratoryRate",
+  HKQuantityTypeIdentifierOxygenSaturation: "spo2",
+  HKQuantityTypeIdentifierAppleSleepingWristTemperature: "wristTemperature",
+  HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances: "breathingDisturbances",
+  HKQuantityTypeIdentifierTimeInDaylight: "daylight",
+};
+
+const SLEEP_STAGES: Record<string, SleepStage> = {
+  HKCategoryValueSleepAnalysisInBed: "inBed",
+  HKCategoryValueSleepAnalysisAsleepUnspecified: "asleep",
+  HKCategoryValueSleepAnalysisAsleepCore: "core",
+  HKCategoryValueSleepAnalysisAsleepDeep: "deep",
+  HKCategoryValueSleepAnalysisAsleepREM: "rem",
+  HKCategoryValueSleepAnalysisAwake: "awake",
+};
+
+function toRecoverySample(a: Record<string, string>): RecoverySample | undefined {
+  const metric = RECOVERY_TYPES[a["type"] ?? ""];
+  const start = a["startDate"], end = a["endDate"] ?? a["startDate"];
+  if (!metric || !start || !end) return undefined;
+  if (metric === "sleep") {
+    const stage = SLEEP_STAGES[a["value"] ?? ""];
+    return stage ? { metric, start, end, value: 1, stage, ...present("sourceName", a["sourceName"]) } : undefined;
+  }
+  const value = Number(a["value"]);
+  if (!Number.isFinite(value)) return undefined;
+  return { metric, start, end, value, ...present("sourceName", a["sourceName"]) };
 }
 
 export async function* parseHealthExport(
@@ -156,6 +192,11 @@ export async function* parseHealthExport(
       if (kg !== undefined && at) {
         hooks.onBodyMass({ at, kg, ...(attributes["sourceName"] ? { sourceName: attributes["sourceName"] } : {}) });
       }
+      return;
+    }
+    if (tag.name === "Record" && hooks.onRecovery && RECOVERY_TYPES[attributes["type"] ?? ""]) {
+      const sample = toRecoverySample(attributes);
+      if (sample) hooks.onRecovery(sample);
       return;
     }
     if (tag.name === "Workout") {

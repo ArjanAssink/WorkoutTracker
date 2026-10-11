@@ -5,11 +5,12 @@ import { buildWorkout, WorkoutValidationError, type Workout } from "../domain/wo
 import { isAuthorised } from "../http/auth.js";
 import { BodyParseError, readJsonBody } from "../http/jsonBody.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
-import { extractWeightReadings, HealthAutoExportError, parseHealthAutoExportBatch, type BatchResult } from "../ingest/healthAutoExport.js";
+import { extractRecovery, extractWeightReadings, HealthAutoExportError, parseHealthAutoExportBatch, type BatchResult } from "../ingest/healthAutoExport.js";
+import { dailyRecovery } from "../domain/recovery.js";
 import { dailyWeights } from "../domain/bodyWeight.js";
 import type { WorkoutInput } from "../domain/workout.js";
 import { announceMilestones } from "./notifyMilestones.js";
-import { getBodyWeightRepository, getRepository, observedMaxResolver } from "./shared.js";
+import { getBodyWeightRepository, getRecoveryRepository, getRepository, observedMaxResolver } from "./shared.js";
 
 /**
  * Batch ingest for the Health Auto Export app, which is how workouts get here
@@ -60,12 +61,25 @@ export async function ingestHealthAutoExport(
     }
   }
 
+  // Sleep and the overnight signals ride along the same way; rows merge, so a batch with
+  // only resting heart rate leaves the night already stored alone.
+  const recovery = dailyRecovery(extractRecovery(body), "health-auto-export");
+  let recoveryWritten = 0;
+  if (recovery.length > 0) {
+    try {
+      recoveryWritten = await (await getRecoveryRepository()).upsertMany(recovery);
+    } catch (error) {
+      context.error("Failed to store recovery data", error);
+      return serverError("Failed to store recovery data");
+    }
+  }
+
   let parsed: BatchResult;
   try {
     parsed = parseHealthAutoExportBatch(body);
   } catch (error) {
     if (error instanceof HealthAutoExportError) {
-      if (weightsWritten > 0) return ok({ received: 0, written: 0, skipped: 0, details: [], weightsWritten });
+      if (weightsWritten > 0 || recoveryWritten > 0) return ok({ received: 0, written: 0, skipped: 0, details: [], weightsWritten, recoveryWritten });
       return badRequest(error.message);
     }
     throw error;

@@ -5,6 +5,7 @@ import { WorkoutRepository } from "../storage/workoutRepository.js";
 import { BodyWeightRepository } from "../storage/bodyWeightRepository.js";
 import { LiftRepository } from "../storage/liftRepository.js";
 import { MilestoneRepository } from "../storage/milestoneRepository.js";
+import { RecoveryRepository } from "../storage/recoveryRepository.js";
 
 /**
  * One repository per process. Azure Functions reuses a warm worker across invocations, so
@@ -80,4 +81,16 @@ export function getMilestoneRepository(): Promise<MilestoneRepository> {
     return repository;
   })();
   return milestonePromise;
+}
+
+let recoveryPromise: Promise<RecoveryRepository> | undefined;
+
+export function getRecoveryRepository(): Promise<RecoveryRepository> {
+  recoveryPromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = RecoveryRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return recoveryPromise;
 }

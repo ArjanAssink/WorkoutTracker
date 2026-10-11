@@ -11,7 +11,7 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   names — resource group, Function App (Flex Consumption, westeurope), storage account —
   are **not in the repo**: they live in the gitignored `.env` as `WORKOUTS_URL`,
   `AZURE_RESOURCE_GROUP`, `AZURE_FUNCTION_APP`, `AZURE_STORAGE_ACCOUNT` (template:
-  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`. The signed-in `az` user owns
+  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `recovery`. The signed-in `az` user owns
   the subscription.
 - **Data loaded**: ~3,180 workouts (Feb 2018 → now, Apple Health export + Health Auto
   Export + manual), 4,229 days of body weight (Feb 2012 →), 96 lift PRs + 40 rep maxes +
@@ -85,14 +85,15 @@ src/domain/     pure: activityType (slugs, MET, PERSONAL_OVERRIDES, relabels), w
                 buckets, per-activity split, peak HR), goals (weekly verdicts, typical
                 effort, lead-in), weeklySummary (Telegram text), calendar (ICS),
                 bodyWeight, strength (lifts, 1RM estimators, DOTS, block analysis),
-                milestones (instant announcements + the Thursday check-in text)
+                milestones (instant announcements + the Thursday check-in text),
+                recovery (nights from sleep segments, daily signals, baselines, weekly join)
 src/ingest/     shortcutPayload, healthExport (streaming SAX; joins loose HR samples; body
                 mass hook), healthAutoExport (batch + weight metrics), units, xlsx (no-lib)
 src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|YYYY),
                 liftRepository (PK me|pr, me|repmax, me|tm|<program>, me|set),
                 milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
-public/         index.html (dashboard), strength.html — standalone, no build, hand-rolled SVG
+public/         index.html (dashboard), strength.html, recovery.html — standalone, no build, hand-rolled SVG
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
 ```
 
@@ -124,8 +125,11 @@ against every other, and relabelling a slug changes identity.
    README "The weekly log"). Still open: the long-term sheet's "Squat" column mixes SSB and
    straight bar (145×10 is SSB); the `set` rows are only read for their top set so far —
    volume, per-session tonnage and the accessory lifts are stored but not shown.
-2. **Sleep** card (duration, stages, interruptions, bedtime consistency) from Health export
-   `SleepAnalysis` records and the HAE sleep metric — same shape as body weight.
+2. **Recovery page is live** (`/api/recovery`, data at `/api/recovery/data`; domain
+   `recovery.ts`, table `recovery`, rows merge on write). Fed by the export import and the
+   HAE batch. Open: the HAE `sleep_analysis` field names are from the app's documentation,
+   not a real payload — verify against the first batch that carries sleep; a readiness
+   score was deliberately not invented (baselines and deltas only).
 3. **Public repo** — scrubbed on 2026-10-11: history restarted from a single root commit
    (the old history is on the local, never-pushed branch `private-history`), deployment
    names moved to `.env`, the person's numbers taken out of the docs. Keep it that way:
@@ -273,6 +277,13 @@ malformed envelope still returns 400. Keep that asymmetry.
 - **`src/ingest/xlsx.ts` reads .xlsx without a library.** Zip central directory by hand,
   `inflateRawSync`, `sax` for the XML. Error cells (`#N/A`) come back null; date-styled
   numbers come back as `YYYY-MM-DD`.
+- **Recovery rows merge, never replace.** `RecoveryRepository.upsertMany` uses Table
+  Storage's Merge mode because the two sources carry different fields on different days;
+  a Replace would let a resting-heart-rate-only batch erase the night. A night is keyed by
+  the morning it ends on (`nightOf`: start + 9 h, by wall clock) and takes **one** source —
+  the staged one — never a sum across sources. Export parsing: the recovery hook sits in
+  the same `onopentag` as body mass; the record types are grouped in the file, so a test on
+  the first 200 MB sees none of them.
 - **Body weight is not a workout.** Separate domain (`bodyWeight.ts`), separate table and
   repository, one row per local day, earliest reading wins. The export parser delivers it
   through the `onBodyMass` hook rather than a second pass over a 500 MB file. The weight

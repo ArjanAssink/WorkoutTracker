@@ -35,6 +35,8 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`/`POST` | `/api/notify/milestones` | What the week in progress has earned and what was already announced; `POST` sends what is due. |
 | `GET`/`POST` | `/api/notify/checkin` | Preview the Thursday check-in, or send it now. |
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
+| `GET`  | `/api/recovery`  | The Recovery page: sleep, resting HR and HRV against training load. |
+| `GET`  | `/api/recovery/data` | What it reads: one row per day with 28-day baselines, the weekly join with effort, the 90-day typical night. |
 | `GET`  | `/api/lifts`     | Everything the Strength page reads, as JSON. |
 | `GET`  | `/api/calendar.ics` | iCalendar feed to subscribe to. Token in the query string. |
 | `GET`  | `/api/health`   | Unauthenticated liveness probe. |
@@ -361,6 +363,43 @@ That answers "stronger pound-for-pound than in 2016?" even ten kilos heavier.
 Per lift in a block: training max by week as a sparkline, first → last, change, the slope over
 the last four trained weeks, weeks since the training max last rose, and a verdict —
 progressing / holding / regressing. Untrained weeks are skipped, not read as zero.
+
+## Recovery
+
+A third page — `/api/recovery`, linked from the dashboard header — puts the overnight
+signals the watch records next to the training load: sleep by night with its stages,
+resting heart rate and HRV against their own 28-day baselines, a week-by-week table of
+effort beside sleep, deep/REM share, wake-ups, bedtime consistency and the heart figures,
+and small multiples for respiratory rate, SpO₂, sleeping wrist temperature, breathing
+disturbances and time in daylight.
+
+The data comes from the same two paths as everything else. The export import reads the
+`SleepAnalysis`, `RestingHeartRate`, `HeartRateVariabilitySDNN`, `RespiratoryRate`,
+`OxygenSaturation`, `AppleSleepingWristTemperature`, `AppleSleepingBreathingDisturbances`
+and `TimeInDaylight` records as they stream past; the Health Auto Export batch reads the
+matching metrics (`sleep_analysis`, `resting_heart_rate`, `heart_rate_variability`, …).
+Both reduce to **one row per day** in the `recovery` table, and rows **merge** on write, so
+a batch carrying only resting heart rate does not erase the night already stored.
+
+Decisions worth knowing:
+
+- **A night belongs to the morning it ended on.** A sleep that starts after 15:00 is the
+  next day's night; a nap stays with its day. "Last night" on the 11th is the row dated the 11th.
+- **One source per night.** The watch records stages; the phone records in-bed time for
+  the same hours. The source with stages wins outright — summing both would double-count.
+  Before the watch (2016–2021) there is only in-bed time, stored as such and never shown
+  as sleep.
+- **Wake-ups** are awake segments of a minute or more between falling asleep and the final
+  wake-up. **Bedtime consistency** is the circular standard deviation of bedtimes, so
+  23:50 and 00:10 are twenty minutes apart, not twenty-three hours.
+- **Baselines are personal**: the median of the previous 28 days with a value, shown once
+  a week of them exists. The page reads today against that, not against a population norm.
+- HRV is the day's mean of Apple's SDNN samples (several a day, most overnight);
+  respiratory rate, wrist temperature and breathing disturbances file under the morning.
+
+The weekly table's note gives the same-week correlation between effort and resting heart
+rate, and between effort and sleep. With a year of weeks it is a real number; under about
+0.3 either way it is noise, and it says so.
 
 ## Rescoring history
 

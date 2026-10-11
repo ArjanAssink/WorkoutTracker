@@ -3,6 +3,7 @@ import { normaliseActivityType } from "../domain/activityType.js";
 import { toKg, type WeightReading } from "../domain/bodyWeight.js";
 import type { WorkoutInput } from "../domain/workout.js";
 import { parseAppleDate } from "./shortcutPayload.js";
+import type { NightSummary, RecoveryMetric, RecoverySample } from "../domain/recovery.js";
 import { toKcal, toMeters } from "./units.js";
 
 /**
@@ -96,6 +97,62 @@ export function extractWeightReadings(body: unknown): WeightReading[] {
     }
   }
   return out;
+}
+
+/**
+ * Recovery metrics from `data.metrics`. Health Auto Export names them `sleep_analysis`
+ * (one entry per night, hours, with start/end), `resting_heart_rate`, `heart_rate_variability`,
+ * `respiratory_rate`, `blood_oxygen_saturation`, `apple_sleeping_wrist_temperature` and
+ * `time_in_daylight`; matched loosely, read defensively, unknown names ignored.
+ */
+export function extractRecovery(body: unknown): { samples: RecoverySample[]; nights: NightSummary[] } {
+  const samples: RecoverySample[] = [], nights: NightSummary[] = [];
+  if (typeof body !== "object" || body === null) return { samples, nights };
+  const data = (body as Record<string, unknown>)["data"];
+  const metrics = (typeof data === "object" && data !== null ? (data as Record<string, unknown>)["metrics"] : undefined);
+  if (!Array.isArray(metrics)) return { samples, nights };
+  const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : undefined);
+  const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
+  const QUANTITIES: Array<[RegExp, RecoveryMetric]> = [
+    [/resting_?heart_?rate/, "restingHeartRate"], [/heart_?rate_?variability|hrv/, "hrv"], [/respiratory/, "respiratoryRate"],
+    [/oxygen|spo2/, "spo2"], [/wrist_?temp/, "wristTemperature"], [/breathing_?disturb/, "breathingDisturbances"], [/daylight/, "daylight"],
+  ];
+  for (const metric of metrics) {
+    if (typeof metric !== "object" || metric === null) continue;
+    const m = metric as Record<string, unknown>;
+    const name = String(m["name"] ?? "").toLowerCase();
+    const points = Array.isArray(m["data"]) ? m["data"] : [];
+    if (/sleep/.test(name)) {
+      for (const point of points) {
+        if (typeof point !== "object" || point === null) continue;
+        const p = point as Record<string, unknown>;
+        const end = str(p["sleepEnd"]) ?? str(p["inBedEnd"]) ?? str(p["date"]);
+        if (!end) continue;
+        const hours = (k: string) => num(p[k]);
+        nights.push(strip({
+          end, start: str(p["sleepStart"]) ?? str(p["inBedStart"]),
+          inBedHours: hours("inBed"), asleepHours: hours("asleep") ?? hours("totalSleep"), coreHours: hours("core"),
+          deepHours: hours("deep"), remHours: hours("rem"), awakeHours: hours("awake"), sourceName: str(p["source"]) ?? "Health Auto Export",
+        }) as NightSummary);
+      }
+      continue;
+    }
+    const kind = QUANTITIES.find(([re]) => re.test(name))?.[1];
+    if (!kind) continue;
+    for (const point of points) {
+      if (typeof point !== "object" || point === null) continue;
+      const p = point as Record<string, unknown>;
+      const value = num(p["qty"]) ?? num(p["avg"]) ?? num(p["value"]);
+      const at = str(p["date"]);
+      if (value === undefined || !at) continue;
+      samples.push({ metric: kind, start: at, end: str(p["end"]) ?? at, value, sourceName: "Health Auto Export" });
+    }
+  }
+  return { samples, nights };
+}
+
+function strip<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 export interface BatchResult {
