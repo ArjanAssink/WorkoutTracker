@@ -47,6 +47,11 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; } .two .card { margin-bottom: 16px; }
 .smalls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; }
 .small { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; } .small .label { font-size: 12px; color: var(--text-muted); } .small .value { font-size: 18px; font-weight: 600; } .small .sub { font-size: 11px; color: var(--text-muted); }
+.tile.rating .value { display: flex; align-items: baseline; gap: 8px; } .tile.rating .word { font-size: 14px; font-weight: 500; }
+.tile.rating .parts { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; margin-top: 8px; font-size: 11px; color: var(--text-secondary); align-items: center; }
+.tile.rating .parts i { display: block; height: 4px; border-radius: 2px; background: var(--grid); position: relative; } .tile.rating .parts i b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
+.rate { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; } .rate::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--grid); }
+.rate[data-l="recovered"]::before { background: var(--status-good); } .rate[data-l="okay"]::before { background: var(--status-good); opacity: 0.55; } .rate[data-l="under-recovered"]::before { background: var(--status-warn); } .rate[data-l="run down"]::before { background: var(--status-bad); }
 .stale { opacity: 0.45; transition: opacity 120ms ease; }
 svg { display: block; width: 100%; overflow: visible; } svg text { fill: var(--text-muted); font-size: 11px; }
 svg .tick-value { font-variant-numeric: tabular-nums; } svg .grid-line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; } svg .axis-line { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
@@ -102,6 +107,11 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
     </div>
 
     <div id="kpis" class="kpis"></div>
+
+    <div class="card">
+      <div class="card-head"><h2>Recovery rating by day</h2><span class="note" id="rating-note"></span></div>
+      <div class="plot" id="rating-chart"></div>
+    </div>
 
     <div class="card">
       <div class="card-head"><h2>Sleep by night</h2><span class="note" id="sleep-note"></span></div>
@@ -188,6 +198,15 @@ function circularSd(minutes) { if (minutes.length < 2) return 0; const a = (m) =
 function renderKpis() {
   const { days, typical } = state.data; const host = document.getElementById("kpis"); const tiles = [];
   const tile = (label, value, unit, sub, delta) => tiles.push({ label, value, unit, sub, delta });
+  const cur = state.data.current;
+  if (cur) {
+    const el = document.createElement("div"); el.className = "tile rating"; el.style.gridColumn = "span 2";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = `Recovery now · ${fmtDate(cur.date)}`; el.appendChild(l);
+    const v = document.createElement("div"); v.className = "value"; const n = document.createElement("span"); n.textContent = `${cur.rating.score}`; const w = document.createElement("span"); w.className = "word rate"; w.dataset.l = cur.rating.label; w.textContent = cur.rating.label; v.append(n, w); el.appendChild(v);
+    const parts = document.createElement("div"); parts.className = "parts";
+    for (const c of cur.rating.components) { const k = document.createElement("span"); k.textContent = c.label; const bar = document.createElement("i"); const fill = document.createElement("b"); fill.style.width = `${c.score}%`; fill.style.background = c.score >= 80 ? "var(--status-good)" : c.score >= 50 ? "var(--status-warn)" : "var(--status-bad)"; bar.appendChild(fill); const d = document.createElement("span"); d.textContent = `${c.score} · ${c.detail}`; parts.append(k, bar, d); }
+    el.appendChild(parts); tiles.push({ el });
+  }
   const night = last(days, (d) => d.sleepAsleepSeconds);
   if (night) {
     const d = night.d, vs = typical.asleepSeconds ? Math.round((d.sleepAsleepSeconds - typical.asleepSeconds) / 60) : undefined;
@@ -220,8 +239,32 @@ function renderKpis() {
   }
   const wake = days.slice(-7).map((d) => d.sleepAwakenings).filter((x) => x !== undefined);
   if (wake.length) tile("Wake-ups · last 7 nights", (mean(wake)).toFixed(1), "/night", `typical ${typical.awakenings ?? "—"}`);
-  host.replaceChildren(...tiles.map((t) => { const el = document.createElement("div"); el.className = "tile"; const l = document.createElement("div"); l.className = "label"; l.textContent = t.label; const v = document.createElement("div"); v.className = "value"; v.textContent = t.value; if (t.unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = t.unit; v.appendChild(u); }
+  host.replaceChildren(...tiles.map((t) => { if (t.el) return t.el; const el = document.createElement("div"); el.className = "tile"; const l = document.createElement("div"); l.className = "label"; l.textContent = t.label; const v = document.createElement("div"); v.className = "value"; v.textContent = t.value; if (t.unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = t.unit; v.appendChild(u); }
     el.append(l, v); if (t.delta) { const d = document.createElement("div"); d.className = "delta"; d.dataset.s = t.delta.s; d.textContent = t.delta.text; el.appendChild(d); } const s = document.createElement("div"); s.className = "sub"; s.textContent = t.sub; el.appendChild(s); return el; }));
+}
+
+/* ---- the rating by day: a line on a fixed 0–100 axis with the label bands behind it ---- */
+function renderRating() {
+  const host = document.getElementById("rating-chart"), note = document.getElementById("rating-note");
+  const pts = state.data.days.filter((d) => d.rating).map((d) => ({ d, v: d.rating.score }));
+  if (pts.length < 2) { host.replaceChildren(emptyNote("Not enough rated days — a rating needs a night plus a resting HR or HRV against a four-week baseline.")); note.textContent = ""; return; }
+  const width = Math.max(320, host.clientWidth || 640), padL = 36, padR = 14, padT = 10, xAxis = 22, plotH = 140, height = plotH + padT + xAxis;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "presentation" });
+  const t0 = Date.parse(`${pts[0].d.date}T00:00:00Z`), t1 = Date.parse(`${pts[pts.length - 1].d.date}T00:00:00Z`); const x = (t) => padL + ((t - t0) / Math.max(1, t1 - t0)) * (width - padL - padR); const y = (v) => padT + plotH - (v / 100) * plotH;
+  for (const [lo, hi, c] of [[80, 100, "var(--status-good)"], [65, 80, "var(--status-good)"], [50, 65, "var(--status-warn)"], [0, 50, "var(--status-bad)"]]) svg.appendChild(svgEl("rect", { x: padL, y: y(hi), width: width - padL - padR, height: y(lo) - y(hi), style: `fill:${c}; opacity:${lo === 65 ? 0.05 : 0.09}` }));
+  for (const t of [0, 50, 65, 80, 100]) { svg.appendChild(svgEl("line", { class: t === 0 ? "axis-line" : "grid-line", x1: padL, x2: width - padR, y1: y(t), y2: y(t) })); svg.appendChild(svgText(padL - 6, y(t) + 4, `${t}`, { class: "tick-value", "text-anchor": "end" })); }
+  const months = []; for (let d = new Date(t0); d.getTime() <= t1; d.setUTCDate(d.getUTCDate() + 1)) if (d.getUTCDate() === 1) months.push(new Date(d));
+  const every = Math.max(1, Math.ceil((months.length * 44) / (width - padL - padR)));
+  months.forEach((m, i) => { if (i % every === 0) svg.appendChild(svgText(x(m.getTime()), padT + plotH + 15, m.toLocaleDateString(undefined, { month: "short", timeZone: "UTC" }), { "text-anchor": "middle" })); });
+  const avg = pts.map((p, i) => { const win = pts.slice(Math.max(0, i - 6), i + 1); return { t: Date.parse(`${p.d.date}T00:00:00Z`), v: mean(win.map((q) => q.v)), n: win.length }; }).filter((p) => p.n >= 4);
+  if (avg.length > 1) svg.appendChild(svgEl("path", { class: "series", style: "stroke:var(--text-primary); stroke-width:1.5; opacity:0.7", d: avg.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("") }));
+  svg.appendChild(svgEl("path", { class: "series", style: "stroke:var(--cat-4)", d: pts.map((p, i) => `${i ? "L" : "M"}${x(Date.parse(`${p.d.date}T00:00:00Z`)).toFixed(1)},${y(p.v).toFixed(1)}`).join("") }));
+  const r = pts.length > 120 ? 0 : pts.length > 60 ? 2 : 3;
+  for (const p of pts) { const cx = x(Date.parse(`${p.d.date}T00:00:00Z`)), cy = y(p.v); const hit = svgEl("circle", { class: "hit", cx, cy, r: Math.max(6, r + 4) }); svg.appendChild(hit); svg.appendChild(svgEl("circle", { class: "pt mark", cx, cy, r, style: "fill:var(--cat-4)" }));
+    attachTip(hit, `${fmtDate(p.d.date, { weekday: "short", day: "numeric", month: "short" })} · ${p.d.rating.label}`, [["rating", `${p.v}`, "var(--cat-4)"], ...p.d.rating.components.map((c) => [c.label, `${c.score} · ${c.detail}`, null])]); }
+  host.replaceChildren(svg);
+  const vals = pts.map((p) => p.v);
+  note.textContent = `${pts.length} rated days · median ${Math.round(median(vals))} · ${pts.filter((p) => p.v >= 80).length} recovered, ${pts.filter((p) => p.v < 50).length} run down · dark line = 7-day average · bands: 80+ recovered, 65 okay, 50 under-recovered`;
 }
 
 /* ---- sleep: stacked bars per night, stages in fixed slots, 7-night average as a line ---- */
@@ -311,8 +354,9 @@ function renderWeeks() {
   const maxEffort = Math.max(1, ...weeks.map((w) => w.effort));
   const bar = (v, max, color) => { const s = svgEl("svg", { viewBox: "0 0 80 10", width: 80, height: 10, role: "presentation" }); s.style.display = "inline-block"; s.appendChild(svgEl("rect", { x: 0, y: 2, width: Math.max(1, (v / max) * 80), height: 6, rx: 2, style: `fill:${color}` })); return s; };
   const cell = (v, max, color, text) => { const el = document.createElement("span"); el.style.cssText = "display:inline-flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums"; el.append(bar(v, max, color), document.createTextNode(text)); return el; };
-  host.replaceChildren(buildTable(["Week", { text: "Sessions", num: true }, "Effort", { text: "Sleep avg", num: true }, { text: "Deep", num: true }, { text: "REM", num: true }, { text: "Wake-ups", num: true }, "Bedtime", { text: "RHR", num: true }, { text: "HRV", num: true }],
-    weeks.map((w) => [fmtDate(w.weekStart, { day: "numeric", month: "short" }), { text: `${w.sessions}`, num: true }, { el: cell(w.effort, maxEffort, "var(--series-1)", `${Math.round(w.effort)}`) },
+  const rate = (w) => { if (!w.rating) return "—"; const el = document.createElement("span"); el.className = "rate"; el.dataset.l = w.rating.label; el.textContent = `${w.rating.score}`; el.title = w.rating.components.map((c) => `${c.label} ${c.score} (${c.detail})`).join("\n"); return { el }; };
+  host.replaceChildren(buildTable(["Week", "Recovery", { text: "Sessions", num: true }, "Effort", { text: "Sleep avg", num: true }, { text: "Deep", num: true }, { text: "REM", num: true }, { text: "Wake-ups", num: true }, "Bedtime", { text: "RHR", num: true }, { text: "HRV", num: true }],
+    weeks.map((w) => [fmtDate(w.weekStart, { day: "numeric", month: "short" }), rate(w), { text: `${w.sessions}`, num: true }, { el: cell(w.effort, maxEffort, "var(--series-1)", `${Math.round(w.effort)}`) },
       { text: w.asleepSeconds === undefined ? "—" : hm(w.asleepSeconds), num: true }, { text: w.deepPct === undefined ? "—" : `${w.deepPct.toFixed(0)}%`, num: true }, { text: w.remPct === undefined ? "—" : `${w.remPct.toFixed(0)}%`, num: true },
       { text: w.awakenings === undefined ? "—" : w.awakenings.toFixed(1), num: true }, w.bedtimeMinutes === undefined ? "—" : `${clock(w.bedtimeMinutes)}${w.bedtimeSdMinutes !== undefined ? ` ±${w.bedtimeSdMinutes}` : ""}`,
       { text: w.restingHeartRate === undefined ? "—" : `${w.restingHeartRate.toFixed(0)}`, num: true }, { text: w.hrv === undefined ? "—" : `${w.hrv.toFixed(0)}`, num: true }])));
@@ -353,7 +397,7 @@ function renderSmalls() {
 function renderAll() {
   const days = state.data.days; const first = days[0], lastD = days[days.length - 1];
   document.getElementById("span-label").textContent = first ? `${fmtDate(first.date, { day: "numeric", month: "short", year: "numeric" })} – ${fmtDate(lastD.date, { day: "numeric", month: "short", year: "numeric" })} · ${days.filter((d) => d.sleepAsleepSeconds !== undefined).length} nights` : "";
-  renderKpis(); renderSleep();
+  renderKpis(); renderRating(); renderSleep();
   renderDaily("rhr-chart", "rhr-note", (d) => d.restingHeartRate, (d) => d.restingHeartRateBaseline, "bpm", "var(--cat-2)");
   renderDaily("hrv-chart", "hrv-note", (d) => d.hrv, (d) => d.hrvBaseline, "ms", "var(--cat-3)");
   renderWeeks(); renderSmalls();

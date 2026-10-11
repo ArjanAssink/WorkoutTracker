@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  circularSd, dailyRecovery, nightOf, weeklyRecovery, withBaselines, type RecoverySample,
+  circularSd, dailyRecovery, nightOf, rateDay, rateWeek, weeklyRecovery, withBaselines, type RecoverySample,
 } from "../src/domain/recovery.js";
 import type { Workout } from "../src/domain/workout.js";
 import { extractRecovery } from "../src/ingest/healthAutoExport.js";
@@ -141,5 +141,52 @@ describe("extractRecovery — Health Auto Export metrics", () => {
   });
   it("returns nothing for a payload without metrics", () => {
     expect(extractRecovery({ data: { workouts: [] } })).toEqual({ samples: [], nights: [] });
+  });
+});
+
+describe("the recovery rating", () => {
+  const typical = { asleepSeconds: 8 * 3600, awakenings: 3, respiratoryRate: 12.5 };
+  const base = { date: "2026-10-08", source: "health-export" as const, recordedAt: "x", restingHeartRateBaseline: 60, hrvBaseline: 50, wristTemperatureBaseline: 36 };
+
+  it("scores a textbook night at 100 and labels it recovered", () => {
+    const r = rateDay({ ...base, sleepAsleepSeconds: 8 * 3600, hrv: 55, restingHeartRate: 59, sleepAwakenings: 2, respiratoryRate: 12.3, wristTemperature: 35.9 }, typical)!;
+    expect(r.score).toBe(100);
+    expect(r.label).toBe("recovered");
+    expect(r.components.map((c) => c.key)).toEqual(["sleep", "hrv", "rhr", "wakeups", "resp", "temp"]);
+  });
+
+  it("drops with short sleep, a raised resting pulse and a sunken HRV, each on its own scale", () => {
+    const r = rateDay({ ...base, sleepAsleepSeconds: 6 * 3600, hrv: 40, restingHeartRate: 65 }, typical)!;
+    const by = Object.fromEntries(r.components.map((c) => [c.key, c]));
+    expect(by.sleep!.score).toBe(50);  // 6 of 8 hours: ratio 0.75
+    expect(by.hrv!.score).toBe(50);    // −20%
+    expect(by.rhr!.score).toBe(50);    // +5 bpm
+    expect(r.score).toBe(50);
+    expect(r.label).toBe("under-recovered");
+    expect(by.rhr!.detail).toBe("+5 bpm vs baseline");
+  });
+
+  it("renormalises when a signal is missing, and refuses without sleep plus a heart signal", () => {
+    const r = rateDay({ ...base, sleepAsleepSeconds: 8 * 3600, restingHeartRate: 60 }, typical)!;
+    expect(r.score).toBe(100);
+    expect(r.components).toHaveLength(2);
+    expect(rateDay({ ...base, sleepAsleepSeconds: 8 * 3600 }, typical)).toBeUndefined();
+    expect(rateDay({ ...base, hrv: 50, restingHeartRate: 60 }, typical)).toBeUndefined();
+  });
+
+  it("never rewards above the ceiling", () => {
+    const r = rateDay({ ...base, sleepAsleepSeconds: 10 * 3600, hrv: 80, restingHeartRate: 50 }, typical)!;
+    expect(r.score).toBe(100);
+  });
+
+  it("rates a week from its days and its bedtime regularity", () => {
+    const good = rateDay({ ...base, sleepAsleepSeconds: 8 * 3600, hrv: 50, restingHeartRate: 60 }, typical)!;
+    const poor = rateDay({ ...base, sleepAsleepSeconds: 6 * 3600, hrv: 40, restingHeartRate: 65 }, typical)!;
+    const steady = rateWeek([good, good, poor], 20)!;
+    const erratic = rateWeek([good, good, poor], 120)!;
+    expect(steady.score).toBeGreaterThan(erratic.score);
+    expect(steady.components.find((c) => c.key === "consistency")!.score).toBe(100);
+    expect(erratic.components.find((c) => c.key === "consistency")!.score).toBe(0);
+    expect(rateWeek([good, poor], 20)).toBeUndefined(); // two rated days is not a week
   });
 });

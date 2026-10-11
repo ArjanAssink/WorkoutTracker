@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
 import { config } from "../config/index.js";
-import { BASELINE_DAYS, median, weeklyRecovery, withBaselines } from "../domain/recovery.js";
+import { BASELINE_DAYS, median, rateDay, rateWeek, weeklyRecovery, withBaselines, type Rating } from "../domain/recovery.js";
 import { RangeError_, resolveRange } from "../http/dateRange.js";
 import { isAuthorised } from "../http/auth.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
@@ -33,8 +33,7 @@ export async function recoveryData(request: HttpRequest, context: InvocationCont
       (await getRecoveryRepository()).list(leadIn, toDate),
       (await getRepository()).listAll({ from: range.from, to: range.to }),
     ]);
-    const days = withBaselines(allDays).filter((d) => d.date >= fromDate);
-    const weeks = weeklyRecovery(days, workouts, range.from, range.to);
+    const rated = withBaselines(allDays);
     const recent = allDays.filter((d) => d.date >= new Date(range.to.getTime() - TYPICAL_DAYS * 86_400_000).toISOString().slice(0, 10));
     const typical = {
       days: recent.length,
@@ -46,7 +45,17 @@ export async function recoveryData(request: HttpRequest, context: InvocationCont
       awakenings: med(recent.map((d) => d.sleepAwakenings)),
       respiratoryRate: med(recent.map((d) => d.respiratoryRate)),
     };
-    return ok({ from: range.from.toISOString(), to: range.to.toISOString(), days, weeks, typical });
+    // Ratings against the typical night of the range's end — "typical" is one quarter, not a moving target per day.
+    const days = rated.filter((d) => d.date >= fromDate).map((d) => { const rating = rateDay(d, typical); return rating ? { ...d, rating } : d; });
+    const weeks = weeklyRecovery(days, workouts, range.from, range.to).map((w) => {
+      const end = new Date(Date.parse(`${w.weekStart}T00:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+      const ratings = days.filter((d) => d.date >= w.weekStart && d.date < end).map((d) => (d as { rating?: Rating }).rating).filter((r): r is Rating => r !== undefined);
+      const rating = rateWeek(ratings, w.bedtimeSdMinutes);
+      return rating ? { ...w, rating } : w;
+    });
+    const latest = [...days].reverse().find((d) => (d as { rating?: Rating }).rating);
+    const current = latest ? { date: latest.date, rating: (latest as { rating: Rating }).rating } : undefined;
+    return ok({ from: range.from.toISOString(), to: range.to.toISOString(), days, weeks, typical, current });
   } catch (error) {
     context.error("Failed to build recovery data", error);
     return serverError("Failed to build recovery data");

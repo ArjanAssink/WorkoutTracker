@@ -397,6 +397,27 @@ Decisions worth knowing:
 - HRV is the day's mean of Apple's SDNN samples (several a day, most overnight);
   respiratory rate, wrist temperature and breathing disturbances file under the morning.
 
+### The recovery rating
+
+A 0–100 rating per day and per week, built only from how the signals sit against *your
+own* baselines, with the breakdown shown wherever the number is:
+
+| Component | Against | Scale | Weight |
+| --- | --- | --- | --- |
+| Sleep | 90-day typical night | 100 at typical, 0 at half of it | 30 |
+| HRV | 28-day baseline | 100 at baseline, 0 at −40 % | 25 |
+| Resting HR | 28-day baseline | 100 at baseline, 0 at +10 bpm | 25 |
+| Wake-ups | typical count | −12 per extra wake-up | 10 |
+| Respiratory rate | 90-day typical | −25 per breath/min above | 5 |
+| Wrist temperature | 28-day baseline | −40 per +0.5 °C | 5 |
+
+A missing component drops out and the rest are renormalised; a day needs sleep plus one
+heart signal to be rated at all. Better than baseline never scores above 100 — rested is
+the ceiling, not a bonus. Labels: **80+ recovered · 65 okay · 50 under-recovered · below
+50 run down.** The week is the mean of its rated days with a seventh component, **bedtime
+consistency** (100 at ±30 min, 0 at ±120), because the same hours slept at random times
+recover less. "Recovery now" is the latest rated day.
+
 The weekly table's note gives the same-week correlation between effort and resting heart
 rate, and between effort and sleep. With a year of weeks it is a real number; under about
 0.3 either way it is noise, and it says so.

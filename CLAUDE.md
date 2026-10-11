@@ -128,8 +128,10 @@ against every other, and relabelling a slug changes identity.
 2. **Recovery page is live** (`/api/recovery`, data at `/api/recovery/data`; domain
    `recovery.ts`, table `recovery`, rows merge on write). Fed by the export import and the
    HAE batch. Open: the HAE `sleep_analysis` field names are from the app's documentation,
-   not a real payload — verify against the first batch that carries sleep; a readiness
-   score was deliberately not invented (baselines and deltas only).
+   not a real payload — verify against the first batch that carries sleep. The **recovery
+   rating** (`rateDay`/`rateWeek`) is a weighted score against personal baselines with the
+   breakdown attached; weights and scales are in README "The recovery rating" — change
+   them there and in the code together.
 3. **Public repo** — scrubbed on 2026-10-11: history restarted from a single root commit
    (the old history is on the local, never-pushed branch `private-history`), deployment
    names moved to `.env`, the person's numbers taken out of the docs. Keep it that way:

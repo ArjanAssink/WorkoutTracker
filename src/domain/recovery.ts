@@ -339,3 +339,105 @@ function shiftDate(date: string, days: number): string {
 }
 
 const round1 = (n: number | undefined) => (n === undefined ? undefined : Math.round(n * 10) / 10);
+
+// ---------------------------------------------------------------------------
+// The recovery rating
+// ---------------------------------------------------------------------------
+
+/**
+ * A 0–100 rating from the day's signals, each scored against the lifter's own normal and
+ * weighted; a component without data drops out and the rest are renormalised, so a night
+ * without an HRV reading is still rated, just on less. The breakdown is part of the result
+ * because a number alone invites arguing with it.
+ *
+ *   sleep duration   vs the 90-day typical night   100 at typical, 0 at half of it
+ *   HRV              vs the 28-day baseline         100 at baseline, 0 at −40%
+ *   resting HR       vs the 28-day baseline         100 at baseline, 0 at +10 bpm
+ *   wake-ups         vs the typical count           −12 per extra wake-up
+ *   respiratory rate vs the typical                 −25 per breath/min above (illness tell)
+ *   wrist temperature vs the 28-day baseline        −40 per +0.5 °C (same)
+ *
+ * Better-than-baseline never scores above 100: being well rested is the ceiling, not a bonus.
+ */
+export type RatingLabel = "recovered" | "okay" | "under-recovered" | "run down";
+
+export interface RatingComponent {
+  key: string;
+  label: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface Rating {
+  score: number;
+  label: RatingLabel;
+  components: RatingComponent[];
+}
+
+export interface TypicalNight {
+  asleepSeconds?: number | undefined;
+  awakenings?: number | undefined;
+  respiratoryRate?: number | undefined;
+}
+
+const clamp = (n: number) => Math.max(0, Math.min(100, n));
+
+export function ratingLabel(score: number): RatingLabel {
+  return score >= 80 ? "recovered" : score >= 65 ? "okay" : score >= 50 ? "under-recovered" : "run down";
+}
+
+export function rateDay(day: RecoveryDayView, typical: TypicalNight): Rating | undefined {
+  const parts: RatingComponent[] = [];
+  if (day.sleepAsleepSeconds !== undefined && typical.asleepSeconds) {
+    const ratio = day.sleepAsleepSeconds / typical.asleepSeconds;
+    const diff = Math.round((day.sleepAsleepSeconds - typical.asleepSeconds) / 60);
+    parts.push({ key: "sleep", label: "Sleep", score: clamp(((ratio - 0.5) / 0.5) * 100), weight: 30, detail: `${diff >= 0 ? "+" : "−"}${Math.abs(diff)} min vs typical` });
+  }
+  if (day.hrv !== undefined && day.hrvBaseline) {
+    const pct = ((day.hrv - day.hrvBaseline) / day.hrvBaseline) * 100;
+    parts.push({ key: "hrv", label: "HRV", score: clamp(100 + pct * 2.5), weight: 25, detail: `${pct >= 0 ? "+" : ""}${Math.round(pct)}% vs baseline` });
+  }
+  if (day.restingHeartRate !== undefined && day.restingHeartRateBaseline !== undefined) {
+    const delta = day.restingHeartRate - day.restingHeartRateBaseline;
+    parts.push({ key: "rhr", label: "Resting HR", score: clamp(100 - delta * 10), weight: 25, detail: `${delta > 0 ? "+" : ""}${Math.round(delta * 10) / 10} bpm vs baseline` });
+  }
+  if (day.sleepAwakenings !== undefined && typical.awakenings !== undefined) {
+    const extra = day.sleepAwakenings - typical.awakenings;
+    parts.push({ key: "wakeups", label: "Wake-ups", score: clamp(100 - extra * 12), weight: 10, detail: `${day.sleepAwakenings} vs typical ${typical.awakenings}` });
+  }
+  if (day.respiratoryRate !== undefined && typical.respiratoryRate !== undefined) {
+    const above = day.respiratoryRate - typical.respiratoryRate;
+    parts.push({ key: "resp", label: "Respiratory rate", score: clamp(100 - above * 25), weight: 5, detail: `${above >= 0 ? "+" : ""}${Math.round(above * 10) / 10}/min vs typical` });
+  }
+  if (day.wristTemperature !== undefined && day.wristTemperatureBaseline !== undefined) {
+    const above = day.wristTemperature - day.wristTemperatureBaseline;
+    parts.push({ key: "temp", label: "Wrist temperature", score: clamp(100 - above * 80), weight: 5, detail: `${above >= 0 ? "+" : ""}${Math.round(above * 100) / 100} °C vs baseline` });
+  }
+  // Sleep plus at least one heart signal, or there is no rating — a bare wake-up count is not recovery.
+  if (!parts.some((p) => p.key === "sleep") || !parts.some((p) => p.key === "hrv" || p.key === "rhr")) return undefined;
+  return combine(parts);
+}
+
+/**
+ * The week: the mean of its daily ratings, with bedtime consistency as a seventh component —
+ * a regular week recovers better than the same hours slept at random times.
+ */
+export function rateWeek(ratings: Rating[], bedtimeSdMinutes: number | undefined): Rating | undefined {
+  if (ratings.length < 3) return undefined;
+  const keys = [...new Set(ratings.flatMap((r) => r.components.map((c) => c.key)))];
+  const parts: RatingComponent[] = keys.map((key) => {
+    const cs = ratings.flatMap((r) => r.components.filter((c) => c.key === key));
+    return { key, label: cs[0]!.label, score: Math.round(cs.reduce((n, c) => n + c.score, 0) / cs.length), weight: cs[0]!.weight, detail: `${cs.length} day${cs.length === 1 ? "" : "s"}` };
+  });
+  if (bedtimeSdMinutes !== undefined) {
+    parts.push({ key: "consistency", label: "Bedtime consistency", score: clamp(100 - Math.max(0, bedtimeSdMinutes - 30) * (100 / 90)), weight: 15, detail: `±${bedtimeSdMinutes} min` });
+  }
+  return combine(parts);
+}
+
+function combine(parts: RatingComponent[]): Rating {
+  const weight = parts.reduce((n, p) => n + p.weight, 0);
+  const score = Math.round(parts.reduce((n, p) => n + p.score * p.weight, 0) / weight);
+  return { score, label: ratingLabel(score), components: parts.map((p) => ({ ...p, score: Math.round(p.score) })) };
+}
