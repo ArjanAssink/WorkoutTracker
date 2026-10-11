@@ -63,6 +63,10 @@ export async function ingestHealthAutoExport(
 
   // Sleep and the overnight signals ride along the same way; rows merge, so a batch with
   // only resting heart rate leaves the night already stored alone.
+  // Which metrics the automation is configured to send — names only, never values — so a
+  // missing sleep row can be traced to the app's settings rather than guessed at.
+  const metricNames = listMetricNames(body);
+  if (metricNames.length) context.log(`Health Auto Export metrics: ${metricNames.join(", ")}`);
   const recovery = dailyRecovery(extractRecovery(body), "health-auto-export");
   let recoveryWritten = 0;
   if (recovery.length > 0) {
@@ -149,3 +153,11 @@ app.http("ingestHealthAutoExport", {
   authLevel: "anonymous", // Authenticated by the x-api-key header; see http/auth.ts.
   handler: ingestHealthAutoExport,
 });
+
+function listMetricNames(body: unknown): string[] {
+  if (typeof body !== "object" || body === null) return [];
+  const data = (body as Record<string, unknown>)["data"];
+  const metrics = typeof data === "object" && data !== null ? (data as Record<string, unknown>)["metrics"] : undefined;
+  if (!Array.isArray(metrics)) return [];
+  return metrics.map((m) => (typeof m === "object" && m !== null ? String((m as Record<string, unknown>)["name"] ?? "?") : "?")).map((n) => n.slice(0, 40));
+}
