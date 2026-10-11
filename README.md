@@ -32,6 +32,8 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`  | `/api/weekly`   | Each ISO week reviewed against your goals, plus the typical week and streak. |
 | `GET`/`POST` | `/api/bodyweight` | One body-weight reading per day; `POST` a manual one. |
 | `GET`/`POST` | `/api/notify/weekly` | Preview the Monday summary as text, or send it to Telegram now. |
+| `GET`/`POST` | `/api/notify/milestones` | What the week in progress has earned and what was already announced; `POST` sends what is due. |
+| `GET`/`POST` | `/api/notify/checkin` | Preview the Thursday check-in, or send it now. |
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
 | `GET`  | `/api/lifts`     | Everything the Strength page reads, as JSON. |
 | `GET`  | `/api/calendar.ics` | iCalendar feed to subscribe to. Token in the query string. |
@@ -231,6 +233,44 @@ curl -s -X POST "$WORKOUTS_URL/api/notify/weekly" -H "x-api-key: $KEY"
 ```
 
 With Telegram unconfigured the timer logs and does nothing; `POST` returns 503 saying so.
+
+### Milestones, the moment they happen
+
+Some things should not wait for Monday. After every ingest — a Shortcut post, the daily
+Health Auto Export batch — the week in progress is re-read and anything newly earned goes
+to Telegram:
+
+| Key | When |
+| --- | --- |
+| `good` | The week reaches the good threshold; the message says what a perfect one still needs. |
+| `perfect` | Every target met. Supersedes `good`. |
+| `volume` | As many sessions as a perfect week needs, but not its shape — "6 sessions, Capoeira still missing". |
+| `streak:N` | The week is good or perfect and makes it 4, 8, 12, 26 or 52 in a row. |
+| `effort-high` | Effort already above every completed week of the past year (needs 12 weeks of history). |
+| `max-hr:<bpm>` | A workout that just arrived beat the past year's max heart rate, within 25 bpm of `ATHLETE_MAX_HR`. |
+| `longest:<activity>` | Longest session of a target activity in a year, after five earlier ones. |
+
+Each key is announced **once per ISO week**; the `milestones` table remembers what went
+out, which is what keeps the automation's daily re-post of the same seven days quiet. Only
+the two HTTP ingest paths trigger this — the export CLI writes history, not news.
+
+```bash
+curl -s "$WORKOUTS_URL/api/notify/milestones" -H "x-api-key: $KEY"           # due + already sent
+curl -s -X POST "$WORKOUTS_URL/api/notify/milestones" -H "x-api-key: $KEY"   # send what is due
+```
+
+### The Thursday 18:00 check-in
+
+A second timer, same DST trick (16:00 and 17:00 UTC, sends at 18:00 Amsterdam): how many
+sessions so far against a typical week, the target rows, what a good week still needs with
+the days left, and what a perfect one needs. It stays silent when the week is already
+perfect — the milestone message said so.
+
+```bash
+curl -s "$WORKOUTS_URL/api/notify/checkin" -H "x-api-key: $KEY"              # preview
+curl -s "$WORKOUTS_URL/api/notify/checkin?for=2026-10-08" -H "x-api-key: $KEY"
+curl -s -X POST "$WORKOUTS_URL/api/notify/checkin" -H "x-api-key: $KEY"      # send now
+```
 
 ## Body weight
 

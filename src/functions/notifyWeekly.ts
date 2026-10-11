@@ -33,7 +33,7 @@ export async function buildSummary(now: Date): Promise<{ text: string; weekStart
   return { text: composeWeeklySummary(report), weekStart: report.current?.weekStart };
 }
 
-export async function sendTelegram(text: string, context: InvocationContext): Promise<void> {
+export async function sendTelegram(text: string, context: InvocationContext, what = "Weekly summary"): Promise<void> {
   const { telegram } = config();
   if (!telegram) throw new Error("Telegram is not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID");
 
@@ -53,7 +53,7 @@ export async function sendTelegram(text: string, context: InvocationContext): Pr
     const body = await response.text().catch(() => "");
     throw new Error(`Telegram responded ${response.status}: ${body.slice(0, 300)}`);
   }
-  context.log("Weekly summary sent to Telegram");
+  context.log(`${what} sent to Telegram`);
 }
 
 /**

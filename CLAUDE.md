@@ -11,7 +11,7 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   names — resource group, Function App (Flex Consumption, westeurope), storage account —
   are **not in the repo**: they live in the gitignored `.env` as `WORKOUTS_URL`,
   `AZURE_RESOURCE_GROUP`, `AZURE_FUNCTION_APP`, `AZURE_STORAGE_ACCOUNT` (template:
-  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`. The signed-in `az` user owns
+  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`. The signed-in `az` user owns
   the subscription.
 - **Data loaded**: ~3,180 workouts (Feb 2018 → now, Apple Health export + Health Auto
   Export + manual), 4,229 days of body weight (Feb 2012 →), 96 lift PRs + 40 rep maxes +
@@ -22,8 +22,10 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   `DEPLOY_ENABLED=false`. Flex Consumption has no publish profile; `scripts/setup-github-oidc.sh`
   does the one-time wiring but needs an Entra app registration, which the assistant's
   permission policy blocked. Until then **deploy by hand** (below).
-- **Telegram** is configured (bot token + chat id in app settings); the Monday 10:00
-  Amsterdam summary has been sent once by hand and verified.
+- **Telegram** is configured (bot token + chat id in app settings). Three senders: the
+  Monday 10:00 summary, the Thursday 18:00 check-in, and milestones fired from the ingest
+  paths (`notifyMilestones.ts`, state in the `milestones` table, one announcement per key
+  per ISO week). Preview any of them over HTTP before trusting a timer.
 
 ## Secrets and where they live
 
@@ -82,11 +84,13 @@ src/domain/     pure: activityType (slugs, MET, PERSONAL_OVERRIDES, relabels), w
                 effort (TRIMP / MET, trailing-year observed max), scoring, summary (dense
                 buckets, per-activity split, peak HR), goals (weekly verdicts, typical
                 effort, lead-in), weeklySummary (Telegram text), calendar (ICS),
-                bodyWeight, strength (lifts, 1RM estimators, DOTS, block analysis)
+                bodyWeight, strength (lifts, 1RM estimators, DOTS, block analysis),
+                milestones (instant announcements + the Thursday check-in text)
 src/ingest/     shortcutPayload, healthExport (streaming SAX; joins loose HR samples; body
                 mass hook), healthAutoExport (batch + weight metrics), units, xlsx (no-lib)
 src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|YYYY),
-                liftRepository (PK me|pr, me|repmax, me|tm|<program>)
+                liftRepository (PK me|pr, me|repmax, me|tm|<program>, me|set),
+                milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
 public/         index.html (dashboard), strength.html — standalone, no build, hand-rolled SVG
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
@@ -299,7 +303,13 @@ malformed envelope still returns 400. Keep that asymmetry.
   change without a deploy.
 - **The weekly timer fires at 08:00 and 09:00 UTC and checks the Amsterdam hour itself**,
   because Linux Flex Consumption ignores `WEBSITE_TIME_ZONE`. `GET /api/notify/weekly`
-  previews the message; never wait a week to find out it is wrong.
+  previews the message; never wait a week to find out it is wrong. The Thursday check-in
+  (`16,17 UTC → 18:00 local`) works the same way; `GET /api/notify/checkin?for=` previews it.
+- **Milestones are announced once per key per ISO week.** `announceMilestones` runs after
+  every HTTP ingest and must never throw into the response; the Health Auto Export batch
+  re-posts the same week daily, so without the `milestones` table every good week would be
+  announced every morning. Records (`max-hr`, `longest`) are credited only to workouts in
+  the batch that just arrived, never to re-posts of stored ones.
 - **The dashboard computes the streak over complete weeks only.** It asks for `until=today`,
   so the last week is the one in progress and is "short" on any Monday; counting it would
   zero a streak that is still intact.

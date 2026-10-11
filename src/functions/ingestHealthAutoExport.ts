@@ -8,6 +8,7 @@ import { badRequest, ok, serverError, unauthorised } from "../http/responses.js"
 import { extractWeightReadings, HealthAutoExportError, parseHealthAutoExportBatch, type BatchResult } from "../ingest/healthAutoExport.js";
 import { dailyWeights } from "../domain/bodyWeight.js";
 import type { WorkoutInput } from "../domain/workout.js";
+import { announceMilestones } from "./notifyMilestones.js";
 import { getBodyWeightRepository, getRepository, observedMaxResolver } from "./shared.js";
 
 /**
@@ -104,6 +105,8 @@ export async function ingestHealthAutoExport(
 
   try {
     const written = await repository.upsertMany(ready);
+    // The batch re-posts the same days every morning; the milestone state keeps that quiet.
+    if (written > 0) await announceMilestones(ready, context);
 
     context.log(
       `Health Auto Export: ${written} workouts written, ${rejected.length} skipped` +

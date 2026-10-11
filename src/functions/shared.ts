@@ -4,6 +4,7 @@ import type { WorkoutInput } from "../domain/workout.js";
 import { WorkoutRepository } from "../storage/workoutRepository.js";
 import { BodyWeightRepository } from "../storage/bodyWeightRepository.js";
 import { LiftRepository } from "../storage/liftRepository.js";
+import { MilestoneRepository } from "../storage/milestoneRepository.js";
 
 /**
  * One repository per process. Azure Functions reuses a warm worker across invocations, so
@@ -67,4 +68,16 @@ export function getRepository(): Promise<WorkoutRepository> {
     return repository;
   })();
   return repositoryPromise;
+}
+
+let milestonePromise: Promise<MilestoneRepository> | undefined;
+
+export function getMilestoneRepository(): Promise<MilestoneRepository> {
+  milestonePromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = MilestoneRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return milestonePromise;
 }
