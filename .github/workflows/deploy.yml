@@ -1,0 +1,67 @@
+# Deploys to the Azure Function App on every push to main.
+#
+# Flex Consumption cannot be deployed with a publish profile — `az functionapp
+# deployment list-publishing-profiles` refuses outright for that SKU — so this
+# authenticates with OIDC instead. GitHub mints a short-lived token per run and
+# Azure trusts it via a federated credential; nothing long-lived is stored here.
+#
+# One-time setup is in README.md under "Wiring up GitHub Actions". It creates the
+# app registration and sets:
+#   vars:    DEPLOY_ENABLED=true
+#   secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_FUNCTIONAPP_NAME
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  # Required for OIDC: lets the job request a GitHub identity token.
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # A repository variable rather than a secret: the `secrets` context is not available
+    # in a job-level `if`, but `vars` is.
+    if: vars.DEPLOY_ENABLED == 'true'
+    # The federated credential's subject must match this environment name.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      # The runtime only needs production dependencies; dev deps would triple the package.
+      - name: Prune to production dependencies
+        run: npm prune --omit=dev
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          # Flex serves the app from a blob container, not Kudu's zipdeploy; the action
+          # takes a different path when it knows the SKU, and that path needs the
+          # azure/login above rather than a publish profile.
+          sku: flexconsumption
+          # Off by default in this action, which would otherwise ship src/, test/ and
+          # the preview server alongside the built output.
+          respect-funcignore: true

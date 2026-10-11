@@ -1,0 +1,1754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Workout Tracker</title>
+<style>
+/* Palette roles. Light values on :root; dark redefined under both the OS media query
+   and the explicit theme toggle, so the toggle wins in either direction. */
+:root {
+  color-scheme: light;
+  --page:           #f9f9f7;
+  --surface-1:      #fcfcfb;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --grid:           #e1e0d9;
+  --axis:           #c3c2b7;
+  --border:         rgba(11, 11, 11, 0.10);
+  --hover-wash:     rgba(11, 11, 11, 0.04);
+  --series-1:       #2a78d6;
+  --heat-0:         #e1e0d9;
+  --heat-1:         #86b6ef;
+  --heat-2:         #5598e7;
+  --heat-3:         #2a78d6;
+  --heat-4:         #184f95;
+  /* Categorical slots, in fixed order. Validated as a set against this surface:
+     worst adjacent CVD ΔE 9.1, normal-vision ΔE 19.6. Three slots sit below 3:1
+     contrast here, which is why the legend and the table view are mandatory. */
+  --cat-1:         #2a78d6;
+  --cat-2:         #eb6834;
+  --cat-3:         #1baf7a;
+  --cat-4:         #eda100;
+  --cat-5:         #e87ba4;
+  --cat-6:         #008300;
+  --cat-7:         #4a3aa7;
+  --cat-8:         #e34948;
+  --cat-rest:      #898781;
+  /* Status palette, reserved for verdicts and mode-invariant, so defined once here.
+     Always paired with a label — never colour alone. */
+  --status-good:    #0ca30c;
+  --status-warn:    #fab219;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page:           #0d0d0d;
+    --surface-1:      #1a1a19;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255, 255, 255, 0.10);
+    --hover-wash:     rgba(255, 255, 255, 0.06);
+    --series-1:       #3987e5;
+    --heat-0:         #2c2c2a;
+    --heat-1:         #184f95;
+    --heat-2:         #256abf;
+    --heat-3:         #3987e5;
+    --heat-4:         #86b6ef;
+    --cat-1:         #3987e5;
+    --cat-2:         #d95926;
+    --cat-3:         #199e70;
+    --cat-4:         #c98500;
+    --cat-5:         #d55181;
+    --cat-6:         #008300;
+    --cat-7:         #9085e9;
+    --cat-8:         #e66767;
+    --cat-rest:      #898781;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page:           #0d0d0d;
+  --surface-1:      #1a1a19;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --grid:           #2c2c2a;
+  --axis:           #383835;
+  --border:         rgba(255, 255, 255, 0.10);
+  --hover-wash:     rgba(255, 255, 255, 0.06);
+  --series-1:       #3987e5;
+  --heat-0:         #2c2c2a;
+  --heat-1:         #184f95;
+  --heat-2:         #256abf;
+  --heat-3:         #3987e5;
+  --heat-4:         #86b6ef;
+  --cat-1:         #3987e5;
+  --cat-2:         #d95926;
+  --cat-3:         #199e70;
+  --cat-4:         #c98500;
+  --cat-5:         #d55181;
+  --cat-6:         #008300;
+  --cat-7:         #9085e9;
+  --cat-8:         #e66767;
+  --cat-rest:      #898781;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.subtitle { color: var(--text-muted); font-size: 13px; }
+.spacer { flex: 1; }
+
+/* ---- Filter row: one row, above everything it scopes ---- */
+.filters {
+  display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+}
+/* Label and its buttons wrap as one unit, so "Group by" never orphans onto its own line. */
+.filter-set { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.custom-range { display: inline-flex; gap: 6px; align-items: center; }
+.custom-range input[type="date"] {
+  font: inherit; font-size: 13px; color: var(--text-primary);
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px;
+}
+.custom-range input:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+svg .whisker { stroke-width: 2; stroke-linecap: round; opacity: 0.55; }
+svg .dot { stroke: var(--surface-1); stroke-width: 2; }
+svg .ref-line { stroke: var(--text-muted); stroke-width: 1; shape-rendering: crispEdges; }
+svg .reading { fill: var(--cat-rest); opacity: 0.55; }
+svg .trend { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg .trend-wash { fill: var(--series-1); opacity: 0.08; }
+svg .crosshair { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; pointer-events: none; }
+svg .end-dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+svg .ref-label { fill: var(--text-muted); font-size: 11px; }
+.group { display: flex; gap: 2px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.group button {
+  font: inherit; font-size: 13px; color: var(--text-secondary);
+  background: none; border: 0; border-radius: 6px; padding: 5px 11px; cursor: pointer;
+}
+.group button:hover { background: var(--hover-wash); }
+.group button[aria-pressed="true"] { background: var(--series-1); color: #fff; }
+.group button:focus-visible, .icon-btn:focus-visible, .link:focus-visible {
+  outline: 2px solid var(--series-1); outline-offset: 2px;
+}
+.filter-label { font-size: 12px; color: var(--text-muted); }
+.icon-btn {
+  font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px;
+}
+.icon-btn:hover { background: var(--hover-wash); }
+select {
+  font: inherit; font-size: 13px; color: var(--text-primary); cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; max-width: 220px;
+}
+select:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+
+/* Legend — always present for two or more series; identity never rests on colour alone. */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.legend i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+/* ---- KPI row ---- */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.tile .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+/* Proportional figures: tabular-nums makes a standalone number look loose at this size. */
+.tile .value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.tile .unit { font-size: 14px; font-weight: 400; color: var(--text-secondary); margin-left: 2px; }
+.tile .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+/* ---- Cards ---- */
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 18px 18px 14px; margin-bottom: 16px; }
+.card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+.card h2 { font-size: 14px; font-weight: 600; margin: 0; }
+.card .note { font-size: 12px; color: var(--text-muted); }
+.card .plot { margin-top: 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* Refetch holds the previous render at reduced opacity — no skeleton, no layout jump. */
+.stale { opacity: 0.45; transition: opacity 120ms ease; }
+
+svg { display: block; width: 100%; overflow: visible; }
+svg text { fill: var(--text-muted); font-size: 11px; }
+svg .tick-value { font-variant-numeric: tabular-nums; }
+svg .grid-line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; }
+svg .axis-line { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
+svg .mark { fill: var(--series-1); }
+svg .hit { fill: transparent; cursor: pointer; outline: none; }
+svg .hit:focus-visible + .mark, svg .hit:hover + .mark,
+svg .hit:focus-visible + .stack, svg .hit:hover + .stack { opacity: 0.78; }
+svg .value-label { fill: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
+
+/* ---- Tooltip ---- */
+.tip {
+  position: fixed; z-index: 10; pointer-events: none; opacity: 0;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.13);
+  transition: opacity 90ms ease; max-width: 240px;
+}
+.tip[data-show="1"] { opacity: 1; }
+.tip .tip-head { color: var(--text-muted); margin-bottom: 4px; }
+.tip-row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+/* Values lead, labels follow — the reader already knows the series. */
+.tip-row .v { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tip-row .k { color: var(--text-secondary); }
+.tip-key { width: 10px; height: 2px; border-radius: 1px; background: var(--series-1); flex: none; }
+
+/* ---- Weekly goals ---- */
+.strip { display: flex; gap: 4px; margin: 12px 0 4px; }
+.strip i {
+  flex: 1; height: 14px; border-radius: 3px; min-width: 10px;
+  background: var(--grid);
+}
+.strip i[data-v="perfect"] { background: var(--status-good); }
+.strip i[data-v="good"]    { background: var(--series-1); }
+.strip i[data-v="short"]   { background: var(--status-warn); }
+.strip-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
+.strip-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.verdict::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--grid); }
+.verdict[data-v="perfect"]::before { background: var(--status-good); }
+.verdict[data-v="good"]::before    { background: var(--series-1); }
+.verdict[data-v="short"]::before   { background: var(--status-warn); }
+.dots { font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: 1px; }
+.dots b { color: var(--text-primary); font-weight: 400; }
+.dots s { color: var(--grid); text-decoration: none; }
+.week-now { background: var(--hover-wash); }
+.goal-head { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.goal-head b { color: var(--text-primary); font-weight: 600; }
+
+/* ---- Calendar heatmap ---- */
+.cal-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); margin-top: 10px; }
+.cal-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+.cal-scroll { overflow-x: auto; padding-bottom: 4px; }
+
+/* ---- Table ---- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--border); }
+th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
+tbody tr:last-child td { border-bottom: 0; }
+.link { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--series-1); cursor: pointer; text-decoration: underline; }
+.empty { color: var(--text-muted); padding: 28px 0; text-align: center; font-size: 13px; }
+
+/* ---- Key gate ---- */
+.gate { max-width: 400px; margin: 72px auto; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 22px; }
+.gate h2 { font-size: 15px; margin: 0 0 6px; }
+.gate p { color: var(--text-secondary); font-size: 13px; margin: 0 0 14px; }
+.gate input {
+  width: 100%; font: inherit; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid var(--axis); background: var(--page); color: var(--text-primary); margin-bottom: 10px;
+}
+.gate input:focus { outline: 2px solid var(--series-1); outline-offset: 1px; border-color: transparent; }
+.gate button { font: inherit; font-weight: 500; background: var(--series-1); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
+.err { color: #d03b3b; font-size: 12px; margin-top: 10px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="gate" class="gate" hidden>
+    <h2>API key</h2>
+    <p>Paste the <code>INGEST_API_KEY</code> this app was deployed with. It is kept in this browser only.</p>
+    <input id="gate-key" type="password" autocomplete="current-password" placeholder="x-api-key" spellcheck="false">
+    <button id="gate-go" type="button">Open dashboard</button>
+    <div id="gate-err" class="err" hidden></div>
+  </div>
+
+  <div id="app" hidden>
+    <header>
+      <h1>Workout Tracker</h1>
+      <span class="subtitle" id="range-label"></span>
+      <span class="spacer"></span>
+      <a class="icon-btn" href="/api/strength" style="text-decoration:none">Strength →</a>
+      <button class="icon-btn" id="theme-toggle" type="button" title="Toggle light and dark">Theme</button>
+      <button class="icon-btn" id="sign-out" type="button">Forget key</button>
+    </header>
+
+    <!-- One filter row, above everything it scopes. Date range first. -->
+    <div class="filters">
+      <div class="filter-set">
+        <span class="filter-label">Range</span>
+        <div class="group" id="range-group" role="group" aria-label="Date range">
+          <button type="button" data-days="30">30 days</button>
+          <button type="button" data-days="90">90 days</button>
+          <button type="button" data-days="365">1 year</button>
+          <button type="button" data-days="7300">All</button>
+          <button type="button" data-days="custom">Custom</button>
+        </div>
+        <span class="custom-range" id="custom-range" hidden>
+          <input type="date" id="range-from" aria-label="From">
+          <span class="filter-label">to</span>
+          <input type="date" id="range-to" aria-label="To">
+          <button class="icon-btn" id="range-apply" type="button">Apply</button>
+        </span>
+      </div>
+      <div class="filter-set">
+        <span class="filter-label">Activity</span>
+        <select id="activity-filter" aria-label="Activity"><option value="">All activities</option></select>
+      </div>
+      <div class="filter-set">
+        <span class="filter-label">Group by</span>
+        <div class="group" id="gran-group" role="group" aria-label="Granularity">
+          <button type="button" data-gran="day">Day</button>
+          <button type="button" data-gran="week">Week</button>
+          <button type="button" data-gran="month">Month</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="kpis" class="kpis"></div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 id="trend-title">Effort over time</h2>
+        <span class="spacer"></span>
+        <div class="group" id="metric-group" role="group" aria-label="Metric">
+          <button type="button" data-metric="effort">Effort</button>
+          <button type="button" data-metric="durationSeconds">Time</button>
+          <button type="button" data-metric="distanceMeters">Distance</button>
+          <button type="button" data-metric="workouts">Count</button>
+          <button type="button" data-metric="heartRate">Heart rate</button>
+        </div>
+      </div>
+      <div class="note" id="trend-note"></div>
+      <div class="plot" id="trend"></div>
+      <div class="legend" id="trend-legend"></div>
+      <button class="link" id="toggle-table" type="button" style="margin-top:10px">Show data table</button>
+      <div id="trend-table" hidden style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Weekly goals</h2>
+        <span class="note" id="goal-spec"></span>
+      </div>
+      <div class="goal-head" id="goal-head"></div>
+      <div class="strip" id="goal-strip"></div>
+      <div class="strip-legend">
+        <span><i style="background:var(--status-good)"></i>Perfect — every target hit</span>
+        <span><i style="background:var(--series-1)"></i>Good — 5+ sessions</span>
+        <span><i style="background:var(--status-warn)"></i>Short</span>
+      </div>
+      <div id="goal-table"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>When you trained</h2>
+        <span class="note">Each cell is one day, shaded by total effort.</span>
+      </div>
+      <div class="plot cal-scroll" id="calendar"></div>
+      <div class="cal-legend">
+        <span>Less</span>
+        <i style="background:var(--heat-0)"></i><i style="background:var(--heat-1)"></i>
+        <i style="background:var(--heat-2)"></i><i style="background:var(--heat-3)"></i>
+        <i style="background:var(--heat-4)"></i>
+        <span>More</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Body weight</h2>
+        <span class="note" id="weight-note"></span>
+      </div>
+      <div class="plot" id="weight-chart"></div>
+      <div class="legend" id="weight-legend"></div>
+      <button class="link" id="toggle-weight-table" type="button" style="margin-top:10px">Show data table</button>
+      <div id="weight-table" hidden style="margin-top:12px"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head"><h2>Time by activity</h2></div>
+        <div class="plot" id="activities"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Recent workouts</h2></div>
+        <div class="plot" id="recent"></div>
+      </div>
+    </div>
+
+    <div id="error" class="err" hidden></div>
+  </div>
+</div>
+
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script type="module">
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * State
+ * ------------------------------------------------------------------ */
+
+const KEY_STORAGE = "workout-tracker.apiKey";
+const THEME_STORAGE = "workout-tracker.theme";
+
+const state = {
+  key: "",
+  days: 90,
+  from: null,   // ISO date when a custom range is active; otherwise `days` back from today
+  to: null,
+  granularity: "day",
+  metric: "effort",
+  activity: "",
+  summary: null,
+  weekly: null,
+  weights: [],
+  workoutsTruncated: false,
+  workouts: [],
+};
+
+/* The active range, in the three shapes the page needs it. A custom from/to wins over the
+   preset day count; everything that scopes by range goes through these, never state.days. */
+function rangeParams() {
+  return state.from && state.to ? { from: state.from, to: state.to } : { days: state.days };
+}
+function rangeDays() {
+  if (!(state.from && state.to)) return state.days;
+  return Math.max(1, Math.round((Date.parse(state.to) - Date.parse(state.from)) / DAY_MS));
+}
+/** Exclusive end of the range as a Date — today for presets, the chosen day for custom. */
+function rangeEnd() {
+  return state.to ? new Date(`${state.to}T00:00:00Z`) : new Date();
+}
+
+/* localStorage throws outright in some privacy modes, so every access is guarded
+   and the page must still work when it returns nothing. */
+function readStored(name) {
+  try { return localStorage.getItem(name) ?? ""; } catch { return ""; }
+}
+function writeStored(name, value) {
+  try { value ? localStorage.setItem(name, value) : localStorage.removeItem(name); } catch { /* ignore */ }
+}
+
+/* ------------------------------------------------------------------ *
+ * Formatting
+ * ------------------------------------------------------------------ */
+
+const METRICS = {
+  effort:          { label: "Effort",   title: "Effort over time",   fmt: (v) => Math.round(v).toLocaleString(), axis: (v) => Math.round(v).toLocaleString() },
+  durationSeconds: { label: "Time",     title: "Time over time",     fmt: (v) => formatDuration(v),             axis: (v) => `${Math.round(v / 3600)}h` },
+  distanceMeters:  { label: "Distance", title: "Distance over time", fmt: (v) => formatDistance(v),             axis: (v) => `${Math.round(v / 1000)} km` },
+  workouts:        { label: "Count",    title: "Workouts over time", fmt: (v) => `${v}`,                        axis: (v) => `${v}` },
+};
+
+function formatDuration(seconds) {
+  const total = Math.round(seconds / 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function formatDistance(meters) {
+  if (!meters) return "0 km";
+  return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)} km`;
+}
+
+const DAY_MS = 86400000;
+
+function formatPeriod(period, granularity) {
+  if (granularity === "month") {
+    const [y, m] = period.split("-");
+    return new Date(Date.UTC(+y, +m - 1, 1)).toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" });
+  }
+  const date = new Date(`${period}T00:00:00Z`);
+  const short = date.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  return granularity === "week" ? short : short;
+}
+
+function formatPeriodLong(period, granularity) {
+  if (granularity === "month") {
+    const [y, m] = period.split("-");
+    return new Date(Date.UTC(+y, +m - 1, 1)).toLocaleDateString(undefined, { month: "long", year: "numeric", timeZone: "UTC" });
+  }
+  const date = new Date(`${period}T00:00:00Z`);
+  const label = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  return granularity === "week" ? `Week of ${label}` : label;
+}
+
+/* Axis ticks land on clean numbers so the reader can interpolate the unlabelled bars. */
+function niceTicks(max, count = 4) {
+  if (max <= 0) return [0];
+  const raw = max / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
+  // Round the top of the scale UP past the max. Stopping at the last tick below it makes
+  // the tallest bar render above the plot, where it collides with the title.
+  const top = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= top + step * 0.001; v += step) ticks.push(v);
+  return ticks;
+}
+
+/* ------------------------------------------------------------------ *
+ * SVG helpers
+ * ------------------------------------------------------------------ */
+
+const NS = "http://www.w3.org/2000/svg";
+
+function svgEl(name, attrs = {}) {
+  const el = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+}
+
+/* Labels come from the API — insert as text nodes, never as markup. */
+function svgText(x, y, content, attrs = {}) {
+  const el = svgEl("text", { x, y, ...attrs });
+  el.appendChild(document.createTextNode(content));
+  return el;
+}
+
+/**
+ * A column/bar path with rounded corners on the data end only, square at the baseline.
+ * `vertical` columns round the top; horizontal bars round the right.
+ */
+function barPath(x, y, w, h, r, vertical) {
+  const radius = Math.max(0, Math.min(r, vertical ? h : w, (vertical ? w : h) / 2));
+  if (radius <= 0) return `M${x},${y}h${w}v${h}h${-w}z`;
+  return vertical
+    ? `M${x},${y + h}V${y + radius}a${radius},${radius} 0 0 1 ${radius},${-radius}h${w - 2 * radius}a${radius},${radius} 0 0 1 ${radius},${radius}V${y + h}z`
+    : `M${x},${y}h${w - radius}a${radius},${radius} 0 0 1 ${radius},${radius}v${h - 2 * radius}a${radius},${radius} 0 0 1 ${-radius},${radius}h${-(w - radius)}z`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Tooltip — marks are the hit target; focus shows the same as hover.
+ * ------------------------------------------------------------------ */
+
+const tip = document.getElementById("tip");
+
+function showTip(event, heading, rows) {
+  tip.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "tip-head";
+  head.textContent = heading;
+  tip.appendChild(head);
+  for (const [label, value, color] of rows) {
+    const row = document.createElement("div");
+    row.className = "tip-row";
+    const key = document.createElement("span");
+    key.className = "tip-key";
+    // A line key in the series colour; identity belongs on the mark, not the text.
+    if (color) key.style.background = color; else key.style.visibility = "hidden";
+    const v = document.createElement("span");
+    v.className = "v";
+    v.textContent = value;
+    const k = document.createElement("span");
+    k.className = "k";
+    k.textContent = label;
+    row.append(key, v, k);
+    tip.appendChild(row);
+  }
+  tip.dataset.show = "1";
+  positionTip(event);
+}
+
+function positionTip(event) {
+  const box = event.target.getBoundingClientRect();
+  const tipBox = tip.getBoundingClientRect();
+  let x = (event.clientX ?? box.left + box.width / 2) + 12;
+  let y = (event.clientY ?? box.top) - tipBox.height - 10;
+  if (x + tipBox.width > window.innerWidth - 8) x = window.innerWidth - tipBox.width - 8;
+  if (y < 8) y = (event.clientY ?? box.bottom) + 16;
+  tip.style.left = `${Math.max(8, x)}px`;
+  tip.style.top = `${y}px`;
+}
+
+function hideTip() { tip.dataset.show = "0"; }
+
+/** Wires a mark's transparent hit rect for pointer and keyboard alike. */
+function attachTip(hit, heading, rows) {
+  hit.setAttribute("tabindex", "0");
+  hit.setAttribute("role", "img");
+  hit.setAttribute("aria-label", `${heading}: ${rows.map(([l, v]) => `${v} ${l}`).join(", ")}`);
+  hit.addEventListener("pointerenter", (e) => showTip(e, heading, rows));
+  hit.addEventListener("pointermove", positionTip);
+  hit.addEventListener("pointerleave", hideTip);
+  hit.addEventListener("focus", (e) => showTip(e, heading, rows));
+  hit.addEventListener("blur", hideTip);
+}
+
+/* ------------------------------------------------------------------ *
+ * Series colour
+ * ------------------------------------------------------------------ */
+
+/**
+ * Slug -> categorical slot, fixed up front rather than derived from the data.
+ *
+ * Colour must follow the activity, never its current rank: if slots were handed out by
+ * volume, changing the range or the filter would repaint the survivors and a reader who
+ * learned "strength is blue" would be misled. Anything not listed shares the de-emphasis
+ * grey under "Other" — generating a ninth hue would produce something indistinguishable
+ * from an existing slot under colour-vision deficiency.
+ */
+const SERIES_SLOTS = {
+  strength: 1, walking: 2, cycling: 3, running: 4,
+  taichi: 5, martialarts: 6, swimming: 7, yoga: 8,
+};
+const OTHER = "__other";
+
+function seriesColor(slug) {
+  const slot = SERIES_SLOTS[slug];
+  return slot ? `var(--cat-${slot})` : "var(--cat-rest)";
+}
+
+/** Activities to stack, in fixed slot order, with everything else folded into Other. */
+function seriesFor(buckets) {
+  const present = new Set();
+  for (const b of buckets) for (const slug of Object.keys(b.byActivity ?? {})) present.add(slug);
+
+  const named = Object.keys(SERIES_SLOTS)
+    .filter((slug) => present.has(slug))
+    .sort((a, b) => SERIES_SLOTS[a] - SERIES_SLOTS[b]);
+  const rest = [...present].filter((slug) => !(slug in SERIES_SLOTS));
+
+  const series = named.map((slug) => ({ slug, members: [slug], label: activityLabel(slug) }));
+  if (rest.length) series.push({ slug: OTHER, members: rest, label: `Other (${rest.length})` });
+  return series;
+}
+
+/* ------------------------------------------------------------------ *
+ * Column chart — stacked by activity, or one hue when filtered to one.
+ * ------------------------------------------------------------------ */
+
+const MAX_BAR = 24;   // Never fill the slot; the leftover band is air.
+const BAR_GAP = 2;    // Surface gap — white does the separating, not a stroke.
+
+function renderTrend() {
+  // Heart rate is per workout rather than per period — a different form in the same card.
+  if (state.metric === "heartRate") return renderHeartRate();
+
+  const host = document.getElementById("trend");
+  const metric = METRICS[state.metric];
+  const buckets = state.summary?.buckets ?? [];
+
+  document.getElementById("trend-title").textContent = metric.title;
+
+  if (buckets.length === 0) {
+    host.replaceChildren(emptyNote("No workouts in this range."));
+    document.getElementById("trend-legend").replaceChildren();
+    return;
+  }
+
+  // Filtered to one activity: a single series, in that activity's own colour so its
+  // identity survives the filter. Otherwise stack the activities.
+  const series = state.activity
+    ? [{ slug: state.activity, members: [state.activity], label: activityLabel(state.activity) }]
+    : seriesFor(buckets);
+
+  const valueOf = (bucket, members) =>
+    members.reduce((sum, slug) => sum + (bucket.byActivity?.[slug]?.[state.metric] ?? 0), 0);
+
+  const width = Math.max(320, host.clientWidth || 640);
+  const padL = 46, padR = 12, padT = 12, xAxisBand = 26;
+  const plotH = 200;
+  const height = plotH + padT + xAxisBand;
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "presentation" });
+  const innerW = width - padL - padR;
+  const slot = innerW / buckets.length;
+  const barW = Math.max(1, Math.min(MAX_BAR, slot - BAR_GAP));
+
+  const totals = buckets.map((b) => series.reduce((sum, s) => sum + valueOf(b, s.members), 0));
+  const ticks = niceTicks(Math.max(...totals));
+  const scaleMax = ticks[ticks.length - 1] || 1;
+  const y = (v) => padT + plotH - (v / scaleMax) * plotH;
+
+  for (const t of ticks) {
+    svg.appendChild(svgEl("line", { class: t === 0 ? "axis-line" : "grid-line", x1: padL, x2: width - padR, y1: y(t), y2: y(t) }));
+    svg.appendChild(svgText(padL - 8, y(t) + 4, metric.axis(t), { class: "tick-value", "text-anchor": "end" }));
+  }
+
+  const labelEvery = Math.max(1, Math.ceil((buckets.length * 54) / innerW));
+  const stackable = barW >= 4; // Below this a 2px gap would eat the segment entirely.
+
+  buckets.forEach((bucket, i) => {
+    const cx = padL + slot * i + slot / 2;
+    const x = cx - barW / 2;
+    const segments = series
+      .map((s) => ({ ...s, value: valueOf(bucket, s.members) }))
+      .filter((s) => s.value > 0);
+
+    // The hit target spans the whole slot and precedes the marks, so a rest period is
+    // hoverable and the CSS sibling rule can dim the stack.
+    const hit = svgEl("rect", { class: "hit", x: padL + slot * i, y: padT, width: slot, height: plotH });
+    svg.appendChild(hit);
+
+    const stack = svgEl("g", { class: "stack" });
+    svg.appendChild(stack);
+
+    let cursor = padT + plotH;
+    segments.forEach((segment, index) => {
+      const h = (segment.value / scaleMax) * plotH;
+      // A 2px surface gap separates touching segments; white does the separating, never
+      // a stroke. Too-thin bars skip it rather than render a sliver.
+      const gap = stackable && index < segments.length - 1 ? BAR_GAP : 0;
+      const drawn = Math.max(0.5, h - gap);
+      const top = cursor - drawn;
+      stack.appendChild(svgEl("path", {
+        // Inline, because the `.mark` class rule would otherwise win over a fill attribute.
+        style: `fill: ${seriesColor(segment.slug)}`,
+        // Only the topmost segment gets the rounded data-end.
+        d: barPath(x, top, barW, drawn, index === segments.length - 1 ? 4 : 0, true),
+      }));
+      cursor -= h;
+    });
+
+    const rows = segments.length
+      ? [...segments].reverse().map((s) => [s.label.toLowerCase(), metric.fmt(s.value), seriesColor(s.slug)])
+      : [["no workouts", "—", null]];
+    if (segments.length > 1) rows.push(["total", metric.fmt(totals[i]), null]);
+    attachTip(hit, formatPeriodLong(bucket.period, state.summary.granularity), rows);
+
+    if (i % labelEvery === 0) {
+      svg.appendChild(svgText(cx, padT + plotH + 17, formatPeriod(bucket.period, state.summary.granularity), { "text-anchor": "middle" }));
+    }
+  });
+
+  host.replaceChildren(svg);
+  renderLegend(series);
+
+  const avg = totals.reduce((a, b) => a + b, 0) / buckets.length;
+  const active = buckets.filter((b, i) => totals[i] > 0).length;
+  const unit = state.summary.granularity;
+  document.getElementById("trend-note").textContent =
+    `${buckets.length} ${unit}s · ${active} with a workout · ${metric.fmt(avg)} average per ${unit}`;
+}
+
+/** A legend is always present for two or more series; one series needs none. */
+function renderLegend(series) { renderLegendInto(document.getElementById("trend-legend"), series); }
+
+function renderLegendInto(host, series) {
+  if (series.length < 2) { host.replaceChildren(); return; }
+  host.replaceChildren(...series.map((s) => {
+    const item = document.createElement("span");
+    const swatch = document.createElement("i");
+    swatch.style.background = seriesColor(s.slug);
+    const text = document.createElement("span");
+    text.textContent = s.label;
+    item.append(swatch, text);
+    return item;
+  }));
+}
+
+/* ------------------------------------------------------------------ *
+ * Activity breakdown — nominal categories, so ONE hue for every bar.
+ * Shading by value would double-encode the bar length and say nothing new.
+ * ------------------------------------------------------------------ */
+
+const MAX_ACTIVITY_ROWS = 7;   // Past this the tail folds into "Other" rather than growing the chart.
+
+function renderActivities() {
+  const host = document.getElementById("activities");
+  const all = state.summary?.byActivity ?? [];
+
+  if (all.length === 0) {
+    host.replaceChildren(emptyNote("No workouts in this range."));
+    return;
+  }
+
+  let rows = all;
+  if (all.length > MAX_ACTIVITY_ROWS) {
+    const head = all.slice(0, MAX_ACTIVITY_ROWS - 1);
+    const tail = all.slice(MAX_ACTIVITY_ROWS - 1);
+    rows = [...head, {
+      activityType: "__other",
+      label: `Other (${tail.length})`,
+      workouts: tail.reduce((s, a) => s + a.workouts, 0),
+      durationSeconds: tail.reduce((s, a) => s + a.durationSeconds, 0),
+      distanceMeters: tail.reduce((s, a) => s + a.distanceMeters, 0),
+      effort: tail.reduce((s, a) => s + a.effort, 0),
+    }];
+  }
+
+  const width = Math.max(300, host.clientWidth || 440);
+  const rowH = 30, labelW = 108, valueW = 62;
+  const height = rows.length * rowH + 4;
+  const trackW = Math.max(40, width - labelW - valueW);
+  const max = Math.max(...rows.map((r) => r.durationSeconds), 1);
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "presentation" });
+
+  rows.forEach((row, i) => {
+    const y = i * rowH;
+    const barH = Math.min(MAX_BAR, rowH - 12);
+    const w = Math.max(2, (row.durationSeconds / max) * trackW);
+
+    const hit = svgEl("rect", { class: "hit", x: 0, y, width, height: rowH });
+    // Order matters: the hover rule is `.hit:hover + .mark`, so the hit must be the
+    // mark's immediately preceding sibling.
+    svg.appendChild(svgText(0, y + barH / 2 + 10, row.label, { class: "cat-label" }));
+    svg.appendChild(hit);
+    svg.appendChild(svgEl("path", {
+      class: "mark",
+      // Same slot as the stacked chart, so an activity keeps one identity across the page.
+      style: `fill: ${seriesColor(row.activityType === "__other" ? OTHER : row.activityType)}`,
+      d: barPath(labelW, y + 6, w, barH, 4, false),
+    }));
+    // Value at the tip, outside the bar — never placed inside where it could be clipped.
+    svg.appendChild(svgText(width, y + barH / 2 + 10, formatDuration(row.durationSeconds), { class: "value-label", "text-anchor": "end" }));
+
+    attachTip(hit, row.label, [
+      ["total time", formatDuration(row.durationSeconds)],
+      ["workouts", `${row.workouts}`],
+      ["effort", Math.round(row.effort).toLocaleString()],
+      ...(row.distanceMeters > 0 ? [["distance", formatDistance(row.distanceMeters)]] : []),
+    ]);
+  });
+
+  host.replaceChildren(svg);
+}
+
+/* ------------------------------------------------------------------ *
+ * Heart rate per workout — a dot at the average, a whisker from min to max.
+ * Coloured by activity with the page's fixed slots, so BJJ is the same colour here
+ * as in the stacked chart. Laid out on real time, not by index, so a gap in training
+ * is a gap on the axis.
+ * ------------------------------------------------------------------ */
+
+function hrWorkouts() {
+  return state.workouts.filter((w) => typeof w.averageHeartRate === "number" && w.averageHeartRate > 0);
+}
+
+function renderHeartRate() {
+  const host = document.getElementById("trend");
+  const note = document.getElementById("trend-note");
+  const legendHost = document.getElementById("trend-legend");
+  const rows = hrWorkouts();
+  document.getElementById("trend-title").textContent = "Heart rate per workout";
+
+  if (rows.length === 0) {
+    host.replaceChildren(emptyNote("No workouts with heart rate in this range."));
+    legendHost.replaceChildren(); note.textContent = "";
+    return;
+  }
+
+  const width = Math.max(320, host.clientWidth || 640);
+  const padL = 46, padR = 12, padT = 14, xAxisBand = 26, plotH = 220;
+  const height = plotH + padT + xAxisBand;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "presentation" });
+
+  const end = rangeEnd();
+  const start = new Date(end.getTime() - rangeDays() * DAY_MS);
+  const x = (t) => padL + ((t - start.getTime()) / (end.getTime() - start.getTime())) * (width - padL - padR);
+
+  const ref = state.summary?.referenceMaxHeartRate;
+  const refMax = ref?.bpm;
+  const lows = rows.map((w) => w.minHeartRate ?? w.averageHeartRate);
+  const highs = rows.map((w) => w.maxHeartRate ?? w.averageHeartRate);
+  const lo = Math.floor((Math.min(...lows) - 5) / 10) * 10;
+  const hi = Math.ceil((Math.max(...highs, refMax ?? 0, ...rows.map((w) => w.maxHeartRateReference ?? 0)) + 5) / 10) * 10;
+  const y = (bpm) => padT + plotH - ((bpm - lo) / (hi - lo)) * plotH;
+
+  const step = hi - lo > 120 ? 40 : hi - lo > 60 ? 20 : 10;
+  for (let t = lo; t <= hi; t += step) {
+    svg.appendChild(svgEl("line", { class: t === lo ? "axis-line" : "grid-line", x1: padL, x2: width - padR, y1: y(t), y2: y(t) }));
+    svg.appendChild(svgText(padL - 8, y(t) + 4, `${t}`, { class: "tick-value", "text-anchor": "end" }));
+  }
+
+  // The ceiling each workout was scored against, drawn as it was at the time: a step up
+  // when a new peak was set, a step down as an old one aged out of the trailing year.
+  // Rows written before the reference was recorded fall back to a flat line at the
+  // value in force at the end of the range.
+  const refs = rows.filter((w) => w.maxHeartRateReference).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  if (refs.length > 1) {
+    let d = "";
+    refs.forEach((w, i) => {
+      const px = x(Date.parse(w.startedAt)), py = y(w.maxHeartRateReference);
+      d += i === 0 ? `M${padL},${py}H${px}` : `H${px}`;
+      if (i > 0 && w.maxHeartRateReference !== refs[i - 1].maxHeartRateReference) d += `V${py}`;
+    });
+    d += `H${width - padR}`;
+    svg.appendChild(svgEl("path", { class: "ref-line", d, fill: "none" }));
+    const last = refs[refs.length - 1].maxHeartRateReference;
+    svg.appendChild(svgText(width - padR, y(last) - 4, `max ${last} · observed, trailing year`, { class: "ref-label", "text-anchor": "end" }));
+  } else if (refMax) {
+    svg.appendChild(svgEl("line", { class: "ref-line", x1: padL, x2: width - padR, y1: y(refMax), y2: y(refMax) }));
+    svg.appendChild(svgText(width - padR, y(refMax) - 4,
+      ref.observed ? `max ${refMax} · observed, trailing year` : `max ${refMax} · configured fallback`,
+      { class: "ref-label", "text-anchor": "end" }));
+  }
+
+  // Month ticks along the bottom, thinned to what fits.
+  const months = [];
+  for (const c = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)); c < end; c.setUTCMonth(c.getUTCMonth() + 1)) {
+    if (c >= start) months.push(new Date(c));
+  }
+  const every = Math.max(1, Math.ceil((months.length * 48) / (width - padL - padR)));
+  months.forEach((m, i) => {
+    if (i % every) return;
+    svg.appendChild(svgText(x(m.getTime()), padT + plotH + 17, m.toLocaleDateString(undefined, { month: "short", timeZone: "UTC" }), { "text-anchor": "middle" }));
+  });
+
+  const slot = Math.max(10, (width - padL - padR) / rows.length);
+  for (const w of rows) {
+    const cx = x(Date.parse(w.startedAt));
+    const color = seriesColor(w.activityType in SERIES_SLOTS ? w.activityType : OTHER);
+    const hit = svgEl("rect", { class: "hit", x: cx - slot / 2, y: padT, width: slot, height: plotH });
+    const g = svgEl("g", { class: "stack" });
+    if (w.minHeartRate || w.maxHeartRate) {
+      g.appendChild(svgEl("line", { class: "whisker", style: `stroke:${color}`, x1: cx, x2: cx,
+        y1: y(w.maxHeartRate ?? w.averageHeartRate), y2: y(w.minHeartRate ?? w.averageHeartRate) }));
+    }
+    g.appendChild(svgEl("circle", { class: "dot", style: `fill:${color}`, cx, cy: y(w.averageHeartRate), r: 4 }));
+    svg.append(hit, g);
+    const when = new Date(w.startedAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    attachTip(hit, `${activityLabel(w.activityType)} · ${when}`, [
+      ["avg bpm", `${w.averageHeartRate}`, color],
+      ...(w.maxHeartRate ? [["max", `${w.maxHeartRate}`, null]] : []),
+      ...(w.minHeartRate ? [["min", `${w.minHeartRate}`, null]] : []),
+      ...(w.maxHeartRateReference ? [["scored against", `${w.maxHeartRateReference}`, null]] : []),
+      ["duration", formatDuration(w.durationSeconds), null],
+    ]);
+  }
+  host.replaceChildren(svg);
+
+  const present = new Set(rows.map((w) => (w.activityType in SERIES_SLOTS ? w.activityType : OTHER)));
+  const series = [...Object.keys(SERIES_SLOTS).filter((k) => present.has(k)).map((slug) => ({ slug, label: activityLabel(slug) })),
+                  ...(present.has(OTHER) ? [{ slug: OTHER, label: "Other" }] : [])];
+  renderLegendInto(legendHost, series);
+
+  const withMin = rows.filter((w) => w.minHeartRate).length;
+  note.textContent = `${rows.length} workouts with heart rate` +
+    (withMin < rows.length ? ` · ${rows.length - withMin} without a minimum (re-import to fill)` : "") +
+    (state.workoutsTruncated ? " · range too large to show every workout" : "");
+}
+
+function renderHeartRateTable() {
+  const rows = [...hrWorkouts()].reverse();
+  document.getElementById("trend-table").replaceChildren(buildTable(
+    ["Date", "Activity", { text: "Avg", num: true }, { text: "Min", num: true }, { text: "Max", num: true }],
+    rows.map((w) => [
+      new Date(w.startedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }),
+      activityLabel(w.activityType),
+      { text: `${w.averageHeartRate}`, num: true },
+      { text: w.minHeartRate ? `${w.minHeartRate}` : "—", num: true },
+      { text: w.maxHeartRate ? `${w.maxHeartRate}` : "—", num: true },
+    ]),
+  ));
+}
+
+/* ------------------------------------------------------------------ *
+ * Body weight — daily readings as quiet grey dots, a 7-day centred trend in the accent.
+ * The trend is the point; the readings are context (emphasis form: one hue plus grey).
+ * ------------------------------------------------------------------ */
+
+const TREND_DAYS = 7;
+
+function weightTrend(points) {
+  // Centred moving average over calendar days, so a skipped day does not shift the window.
+  const byDate = new Map(points.map((p) => [p.date, p.kg]));
+  return points.map((p) => {
+    const t = Date.parse(`${p.date}T00:00:00Z`);
+    let sum = 0, n = 0;
+    for (let d = -Math.floor(TREND_DAYS / 2); d <= Math.floor(TREND_DAYS / 2); d++) {
+      const k = byDate.get(new Date(t + d * DAY_MS).toISOString().slice(0, 10));
+      if (k !== undefined) { sum += k; n++; }
+    }
+    return { date: p.date, kg: p.kg, trend: n ? sum / n : p.kg };
+  });
+}
+
+function weightTile() {
+  const pts = state.weights;
+  if (pts.length === 0) return [];
+  const series = weightTrend(pts);
+  const last = series[series.length - 1];
+  const cutoff = new Date(Date.parse(`${last.date}T00:00:00Z`) - 30 * DAY_MS).toISOString().slice(0, 10);
+  const earlier = [...series].reverse().find((p) => p.date <= cutoff);
+  const delta = earlier ? last.trend - earlier.trend : undefined;
+  return [{
+    label: "Weight",
+    value: last.trend.toFixed(1), unit: "kg",
+    sub: delta !== undefined
+      ? `${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(1)} kg vs 30 days ago`
+      : `7-day trend · last reading ${last.kg.toFixed(1)}`,
+  }];
+}
+
+function renderWeight() {
+  const host = document.getElementById("weight-chart");
+  const note = document.getElementById("weight-note");
+  const legendHost = document.getElementById("weight-legend");
+  const pts = state.weights;
+  if (pts.length === 0) {
+    host.replaceChildren(emptyNote("No weight readings in this range. They arrive with a Health export, or from Health Auto Export with the Weight metric enabled."));
+    legendHost.replaceChildren(); note.textContent = "";
+    return;
+  }
+  const series = weightTrend(pts);
+
+  const width = Math.max(320, host.clientWidth || 640);
+  const padL = 46, padR = 12, padT = 14, xAxisBand = 26, plotH = 200;
+  const height = plotH + padT + xAxisBand;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "presentation" });
+
+  const end = rangeEnd();
+  const start = new Date(end.getTime() - rangeDays() * DAY_MS);
+  const x = (t) => padL + ((t - start.getTime()) / (end.getTime() - start.getTime())) * (width - padL - padR);
+  const tOf = (p) => Date.parse(`${p.date}T12:00:00Z`);
+
+  // Weight does not start its axis at zero: the variation is what the chart is for, and a
+  // 0–90 kg axis would flatten a year's change into a hairline. Pad by a kilo each side.
+  const lo = Math.floor(Math.min(...series.map((p) => p.kg)) - 1);
+  const hi = Math.ceil(Math.max(...series.map((p) => p.kg)) + 1);
+  const y = (kg) => padT + plotH - ((kg - lo) / (hi - lo)) * plotH;
+  const step = hi - lo > 12 ? 5 : hi - lo > 6 ? 2 : 1;
+  for (let v = lo; v <= hi; v += step) {
+    svg.appendChild(svgEl("line", { class: v === lo ? "axis-line" : "grid-line", x1: padL, x2: width - padR, y1: y(v), y2: y(v) }));
+    svg.appendChild(svgText(padL - 8, y(v) + 4, `${v}`, { class: "tick-value", "text-anchor": "end" }));
+  }
+
+  const months = [];
+  for (const c = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)); c < end; c.setUTCMonth(c.getUTCMonth() + 1)) if (c >= start) months.push(new Date(c));
+  const every = Math.max(1, Math.ceil((months.length * 48) / (width - padL - padR)));
+  months.forEach((m, i) => { if (i % every === 0) svg.appendChild(svgText(x(m.getTime()), padT + plotH + 17, m.toLocaleDateString(undefined, { month: "short", timeZone: "UTC" }), { "text-anchor": "middle" })); });
+
+  // Wash under the trend, then the trend line, then the readings on top.
+  const path = series.map((p, i) => `${i ? "L" : "M"}${x(tOf(p)).toFixed(1)},${y(p.trend).toFixed(1)}`).join("");
+  const first = series[0], lastP = series[series.length - 1];
+  svg.appendChild(svgEl("path", { class: "trend-wash", d: `${path}L${x(tOf(lastP)).toFixed(1)},${padT + plotH}L${x(tOf(first)).toFixed(1)},${padT + plotH}Z` }));
+  svg.appendChild(svgEl("path", { class: "trend", d: path }));
+  for (const p of series) svg.appendChild(svgEl("circle", { class: "reading", cx: x(tOf(p)), cy: y(p.kg), r: 2.5 }));
+  svg.appendChild(svgEl("circle", { class: "end-dot", cx: x(tOf(lastP)), cy: y(lastP.trend), r: 4 }));
+  // Direct-label the endpoint only — the one value worth reading off the chart.
+  svg.appendChild(svgText(x(tOf(lastP)) - 8, y(lastP.trend) - 8, `${lastP.trend.toFixed(1)} kg`, { class: "value-label", "text-anchor": "end" }));
+
+  // Crosshair finds the nearest reading on X; the reader aims at a date, not a dot.
+  const cross = svgEl("line", { class: "crosshair", x1: 0, x2: 0, y1: padT, y2: padT + plotH, visibility: "hidden" });
+  svg.appendChild(cross);
+  const hit = svgEl("rect", { class: "hit", x: padL, y: padT, width: width - padL - padR, height: plotH, tabindex: 0, role: "img",
+    "aria-label": `Body weight, ${series.length} readings, trend ${lastP.trend.toFixed(1)} kg` });
+  const nearest = (clientX) => {
+    const rect = svg.getBoundingClientRect();
+    const px = (clientX - rect.left) * (width / rect.width);
+    let best = series[0], bd = Infinity;
+    for (const p of series) { const d = Math.abs(x(tOf(p)) - px); if (d < bd) { bd = d; best = p; } }
+    return best;
+  };
+  const show = (e, p) => {
+    cross.setAttribute("x1", x(tOf(p))); cross.setAttribute("x2", x(tOf(p))); cross.setAttribute("visibility", "visible");
+    showTip(e, new Date(`${p.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
+      [["kg trend (7-day)", p.trend.toFixed(1), "var(--series-1)"], ["kg reading", p.kg.toFixed(1), "var(--cat-rest)"]]);
+  };
+  hit.addEventListener("pointermove", (e) => show(e, nearest(e.clientX)));
+  hit.addEventListener("pointerenter", (e) => show(e, nearest(e.clientX)));
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+  hit.addEventListener("focus", (e) => show(e, lastP));
+  hit.addEventListener("blur", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+  svg.appendChild(hit);
+  host.replaceChildren(svg);
+
+  // Two series — readings and trend — so a legend is required.
+  legendHost.replaceChildren(...[["var(--cat-rest)", "Daily reading"], ["var(--series-1)", "7-day trend"]].map(([c, l]) => {
+    const item = document.createElement("span"); const sw = document.createElement("i"); sw.style.background = c;
+    const t = document.createElement("span"); t.textContent = l; item.append(sw, t); return item;
+  }));
+  const change = lastP.trend - first.trend;
+  note.textContent = `${series.length} readings · ${change >= 0 ? "+" : "−"}${Math.abs(change).toFixed(1)} kg over the range`;
+  if (!document.getElementById("weight-table").hidden) renderWeightTable();
+}
+
+function renderWeightTable() {
+  const rows = [...weightTrend(state.weights)].reverse();
+  document.getElementById("weight-table").replaceChildren(buildTable(
+    ["Date", { text: "Reading (kg)", num: true }, { text: "7-day trend", num: true }],
+    rows.map((p) => [
+      new Date(`${p.date}T12:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" }),
+      { text: p.kg.toFixed(1), num: true }, { text: p.trend.toFixed(1), num: true },
+    ]),
+  ));
+}
+
+/* ------------------------------------------------------------------ *
+ * Weekly goals — the verdict strip is progress over time; the table is the detail.
+ * ------------------------------------------------------------------ */
+
+const VERDICT_LABEL = { perfect: "Perfect", good: "Good", short: "Short" };
+
+function renderGoals() {
+  const report = state.weekly;
+  const spec = document.getElementById("goal-spec");
+  const head = document.getElementById("goal-head");
+  const strip = document.getElementById("goal-strip");
+  const table = document.getElementById("goal-table");
+  if (!report || !report.weeks?.length) {
+    spec.textContent = ""; head.replaceChildren(); strip.replaceChildren(); table.replaceChildren();
+    return;
+  }
+
+  const weeks = report.weeks;
+  const labelOf = Object.fromEntries(weeks[0].targets.map((t) => [t.activityType, t.label]));
+  spec.textContent = report.spec.targets.map((t) => `${t.sessions}× ${labelOf[t.activityType] ?? t.activityType}`).join(" · ")
+    + ` · good week = ${report.spec.goodWeekSessions}+ sessions`;
+
+  // The last cell is the week in progress; the headline is about the last *complete* one.
+  const inProgress = weeks[weeks.length - 1];
+  const last = weeks[weeks.length - 2] ?? inProgress;
+  const base = report.baseline;
+
+  const items = [];
+  const v = document.createElement("span");
+  v.className = "verdict"; v.dataset.v = last.verdict;
+  v.textContent = `Last week: ${VERDICT_LABEL[last.verdict]}`;
+  items.push(v);
+  items.push(textSpan(`${last.totalSessions} sessions`, base ? ` (typical ${fmtMedian(base.medianSessions)})` : ""));
+  items.push(textSpan(formatDuration(last.durationSeconds), base ? ` (typical ${formatDuration(base.medianDurationSeconds)})` : ""));
+  items.push(textSpan(`effort ${Math.round(last.effort)}`, last.typicalEffort !== undefined ? ` (${pctLabel(last.effortRatio)} typical ${Math.round(last.typicalEffort)})` : ""));
+  let streak = 0;
+  for (let i = weeks.length - 2; i >= 0 && weeks[i].verdict !== "short"; i--) streak++;
+  items.push(textSpan(`${streak}-week streak`, " of good or better"));
+  items.push(textSpan(`This week so far: ${inProgress.totalSessions}`, ` session${inProgress.totalSessions === 1 ? "" : "s"}`));
+  head.replaceChildren(...items);
+
+  strip.replaceChildren(...weeks.map((wk, i) => {
+    const cell = document.createElement("i");
+    cell.dataset.v = wk.verdict;
+    if (i === weeks.length - 1) cell.style.opacity = "0.45"; // in progress, not yet judged
+    cell.title = `${fmtWeek(wk.weekStart)} — ${VERDICT_LABEL[wk.verdict]}, ${wk.totalSessions} sessions`;
+    cell.setAttribute("role", "img");
+    cell.setAttribute("aria-label", cell.title);
+    return cell;
+  }));
+
+  const headers = ["Week", "Verdict",
+    ...report.spec.targets.map((t) => ({ text: labelOf[t.activityType] ?? t.activityType, num: false })),
+    { text: "Other", num: true }, { text: "Sessions", num: true }, { text: "Time", num: true }, { text: "Effort", num: true }];
+  const rows = [...weeks].reverse().map((wk, i) => [
+    fmtWeek(wk.weekStart) + (i === 0 ? " (so far)" : ""),
+    { el: verdictEl(wk.verdict) },
+    ...wk.targets.map((t) => ({ el: dotsEl(t.actual, t.sessions) })),
+    { text: `${wk.otherSessions || ""}`, num: true },
+    { text: `${wk.totalSessions}`, num: true },
+    { text: formatDuration(wk.durationSeconds), num: true },
+    { el: effortCell(wk), num: true },
+  ]);
+  table.replaceChildren(buildTable(headers, rows));
+  table.querySelector("tbody tr")?.classList.add("week-now");
+}
+
+/** "312 ▲30%" — the number, then how it sits against the twelve weeks before it. */
+function effortCell(wk) {
+  const el = document.createElement("span");
+  el.className = "dots";
+  const n = document.createElement("b"); n.textContent = `${Math.round(wk.effort)}`;
+  el.appendChild(n);
+  if (wk.effortRatio !== undefined) {
+    const d = document.createElement("span");
+    d.style.color = "var(--text-muted)"; d.style.marginLeft = "6px"; d.style.fontSize = "11px";
+    d.textContent = pctLabel(wk.effortRatio);
+    el.appendChild(d);
+    el.title = `typical of the 12 weeks before: ${Math.round(wk.typicalEffort)}`;
+  }
+  return el;
+}
+function pctLabel(ratio) {
+  const pct = Math.round((ratio - 1) * 100);
+  if (Math.abs(pct) < 10) return "≈";
+  return pct > 0 ? `▲${pct}%` : `▼${-pct}%`;
+}
+
+function verdictEl(verdict) {
+  const el = document.createElement("span");
+  el.className = "verdict"; el.dataset.v = verdict;
+  el.textContent = VERDICT_LABEL[verdict];
+  return el;
+}
+
+/** "●●○" for 2 of 3; surplus sessions are shown as "+n" rather than hidden. */
+function dotsEl(actual, target) {
+  const el = document.createElement("span");
+  el.className = "dots";
+  const filled = document.createElement("b"); filled.textContent = "●".repeat(Math.min(actual, target));
+  const empty = document.createElement("s"); empty.textContent = "●".repeat(Math.max(0, target - actual));
+  el.append(filled, empty);
+  if (actual > target) el.append(document.createTextNode(` +${actual - target}`));
+  el.setAttribute("aria-label", `${actual} of ${target}`);
+  el.title = `${actual} of ${target}`;
+  return el;
+}
+
+function textSpan(strong, rest) {
+  const el = document.createElement("span");
+  const b = document.createElement("b"); b.textContent = strong;
+  el.append(b, document.createTextNode(rest));
+  return el;
+}
+
+function fmtWeek(iso) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+function fmtMedian(n) { return Number.isInteger(n) ? `${n}` : n.toFixed(1); }
+
+/* ------------------------------------------------------------------ *
+ * Calendar heatmap — "when did I train?". Discrete ordered bins, so the
+ * ordinal gate applies: the lightest step still clears the surface.
+ * ------------------------------------------------------------------ */
+
+const CELL = 12, CELL_GAP = 3, WEEKDAY_W = 26, MONTH_BAND = 16;
+const MAX_WEEKS = 53;
+
+function renderCalendar() {
+  const host = document.getElementById("calendar");
+  const workouts = state.workouts;
+
+  if (workouts.length === 0) {
+    host.replaceChildren(emptyNote("No workouts in this range."));
+    return;
+  }
+
+  // Daily effort, keyed by UTC date, plus a per-day list for the tooltip.
+  const byDay = new Map();
+  for (const w of workouts) {
+    const day = w.startedAt.slice(0, 10);
+    const entry = byDay.get(day) ?? { effort: 0, durationSeconds: 0, count: 0, labels: [] };
+    entry.effort += w.effort ?? 0;
+    entry.durationSeconds += w.durationSeconds ?? 0;
+    entry.count += 1;
+    if (entry.labels.length < 3) entry.labels.push(w.activityType);
+    byDay.set(day, entry);
+  }
+
+  // Bin on quartiles of active days rather than fixed cuts, so the shading adapts
+  // to how hard this particular person actually trains.
+  const efforts = [...byDay.values()].map((d) => d.effort).sort((a, b) => a - b);
+  const q = (p) => efforts[Math.min(efforts.length - 1, Math.floor(efforts.length * p))] ?? 0;
+  const cuts = [q(0.25), q(0.5), q(0.75)];
+  const binOf = (effort) => (effort <= 0 ? 0 : effort <= cuts[0] ? 1 : effort <= cuts[1] ? 2 : effort <= cuts[2] ? 3 : 4);
+
+  // Grid runs Monday-first, ending on the week containing today.
+  const last = rangeEnd();
+  const end = startOfWeekUTC(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate()));
+  const spanWeeks = Math.min(MAX_WEEKS, Math.ceil(rangeDays() / 7) + 1);
+  const start = end - (spanWeeks - 1) * 7 * DAY_MS;
+
+  const width = WEEKDAY_W + spanWeeks * (CELL + CELL_GAP);
+  const height = MONTH_BAND + 7 * (CELL + CELL_GAP);
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "presentation", style: `width:${width}px;max-width:none` });
+
+  ["Mon", "Wed", "Fri"].forEach((name, i) => {
+    svg.appendChild(svgText(0, MONTH_BAND + (i * 2) * (CELL + CELL_GAP) + CELL - 1, name));
+  });
+
+  // Label a month only where it owns enough columns to sit under. At a 15px pitch two
+  // consecutive month starts overprint ("AuSep"), and a month clipped to one column at
+  // the edge of the window would label columns that mostly belong to its neighbour.
+  const MIN_LABEL_WEEKS = 3;
+  let runMonth = -1;
+  let runStart = 0;
+  for (let w = 0; w <= spanWeeks; w++) {
+    const month = w < spanWeeks ? new Date(start + w * 7 * DAY_MS).getUTCMonth() : -2;
+    if (month === runMonth) continue;
+    if (runMonth !== -1 && w - runStart >= MIN_LABEL_WEEKS) {
+      const at = new Date(start + runStart * 7 * DAY_MS);
+      svg.appendChild(svgText(WEEKDAY_W + runStart * (CELL + CELL_GAP), 10,
+        at.toLocaleDateString(undefined, { month: "short", timeZone: "UTC" })));
+    }
+    runMonth = month;
+    runStart = w;
+  }
+
+  for (let w = 0; w < spanWeeks; w++) {
+    const x = WEEKDAY_W + w * (CELL + CELL_GAP);
+
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(start + (w * 7 + d) * DAY_MS);
+      if (date.getTime() > Math.min(Date.now(), last.getTime() + DAY_MS)) continue;
+      const iso = date.toISOString().slice(0, 10);
+      const entry = byDay.get(iso);
+      const bin = binOf(entry?.effort ?? 0);
+      const y = MONTH_BAND + d * (CELL + CELL_GAP);
+
+      // The CELL_GAP is the surface gap; no stroke is drawn around a cell.
+      const cell = svgEl("rect", {
+        x, y, width: CELL, height: CELL, rx: 2,
+        fill: `var(--heat-${bin})`,
+      });
+      svg.appendChild(cell);
+
+      const long = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+      // Hit area is padded past the painted cell so a 12px square is still easy to hit.
+      const hit = svgEl("rect", { class: "hit", x: x - 1, y: y - 1, width: CELL + 2, height: CELL + 2 });
+      svg.appendChild(hit);
+      attachTip(hit, long, entry
+        ? [["effort", Math.round(entry.effort).toLocaleString()],
+           ["time", formatDuration(entry.durationSeconds)],
+           [entry.count === 1 ? "workout" : "workouts", `${entry.count}`]]
+        : [["rest day", "—"]]);
+    }
+  }
+
+  host.replaceChildren(svg);
+}
+
+function startOfWeekUTC(ms) {
+  const d = new Date(ms);
+  return ms - ((d.getUTCDay() + 6) % 7) * DAY_MS;   // getUTCDay is 0 on Sunday; ISO weeks start Monday.
+}
+
+/* ------------------------------------------------------------------ *
+ * KPI row, recent list, and the table view
+ * ------------------------------------------------------------------ */
+
+function renderKpis() {
+  const host = document.getElementById("kpis");
+  const t = state.summary?.totals;
+  if (!t) { host.replaceChildren(); return; }
+
+  const days = rangeDays();
+  const perWeek = days > 0 ? (t.workouts / (days / 7)) : 0;
+  const peak = state.summary.peakHeartRate;
+
+  const tiles = [
+    { label: "Workouts", value: t.workouts.toLocaleString(), sub: `${perWeek.toFixed(1)} per week` },
+    { label: "Active days", value: t.activeDays.toLocaleString(), sub: `of ${days} in range` },
+    { label: "Total time", value: formatDuration(t.durationSeconds) },
+    { label: "Distance", value: formatDistance(t.distanceMeters) },
+    { label: "Total effort", value: Math.round(t.effort).toLocaleString() },
+    { label: "Longest streak", value: `${state.summary.longestStreakDays}`, unit: state.summary.longestStreakDays === 1 ? "day" : "days" },
+    ...weightTile(),
+    peak
+      ? { label: "Max heart rate", value: `${peak.bpm}`, unit: "bpm",
+          sub: `${peak.label} · ${new Date(peak.startedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` }
+      : { label: "Max heart rate", value: "—", sub: "no heart rate recorded" },
+  ];
+
+  host.replaceChildren(...tiles.map((tile) => {
+    const el = document.createElement("div");
+    el.className = "tile";
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = tile.label;
+    const value = document.createElement("div");
+    value.className = "value";
+    value.textContent = tile.value;
+    if (tile.unit) {
+      const unit = document.createElement("span");
+      unit.className = "unit";
+      unit.textContent = ` ${tile.unit}`;
+      value.appendChild(unit);
+    }
+    el.append(label, value);
+    if (tile.sub) {
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      sub.textContent = tile.sub;
+      el.appendChild(sub);
+    }
+    return el;
+  }));
+}
+
+function renderRecent() {
+  const host = document.getElementById("recent");
+  const recent = [...state.workouts].reverse().slice(0, 8);
+
+  if (recent.length === 0) {
+    host.replaceChildren(emptyNote("No workouts in this range."));
+    return;
+  }
+
+  host.replaceChildren(buildTable(
+    ["Date", "Activity", { text: "Time", num: true }, { text: "Effort", num: true }],
+    recent.map((w) => [
+      new Date(w.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      activityLabel(w.activityType),
+      { text: formatDuration(w.durationSeconds), num: true },
+      // An effort scored without heart rate is an estimate; mark it rather than implying precision.
+      { text: `${Math.round(w.effort)}${w.effortModel === "met-minutes" ? "*" : ""}`, num: true },
+    ]),
+  ));
+
+  if (recent.some((w) => w.effortModel === "met-minutes")) {
+    const note = document.createElement("div");
+    note.className = "note";
+    note.style.marginTop = "8px";
+    note.textContent = "* estimated from duration and activity — no heart rate recorded";
+    host.appendChild(note);
+  }
+}
+
+/** The table view every chart needs: the same numbers, WCAG-clean, no hovering. */
+function renderTrendTable() {
+  if (state.metric === "heartRate") return renderHeartRateTable();
+  const host = document.getElementById("trend-table");
+  const buckets = state.summary?.buckets ?? [];
+  host.replaceChildren(buildTable(
+    ["Period", { text: "Workouts", num: true }, { text: "Active days", num: true },
+     { text: "Time", num: true }, { text: "Distance", num: true }, { text: "Effort", num: true }],
+    buckets.map((b) => [
+      formatPeriodLong(b.period, state.summary.granularity),
+      { text: `${b.workouts}`, num: true },
+      { text: `${b.activeDays}`, num: true },
+      { text: formatDuration(b.durationSeconds), num: true },
+      { text: formatDistance(b.distanceMeters), num: true },
+      { text: Math.round(b.effort).toLocaleString(), num: true },
+    ]),
+  ));
+}
+
+function buildTable(headers, rows) {
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  for (const h of headers) {
+    const th = document.createElement("th");
+    const spec = typeof h === "string" ? { text: h } : h;
+    if (spec.num) th.className = "num";
+    th.textContent = spec.text;
+    hr.appendChild(th);
+  }
+  thead.appendChild(hr);
+  const tbody = document.createElement("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    for (const cell of row) {
+      const td = document.createElement("td");
+      const spec = typeof cell === "string" ? { text: cell } : cell;
+      if (spec.num) td.className = "num";
+      if (spec.el) td.appendChild(spec.el); else td.textContent = spec.text;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.append(thead, tbody);
+  return table;
+}
+
+/**
+ * Display names come from the server, which holds the real HealthKit mapping —
+ * naive title-casing turns "hiit" into "Hiit". byActivity covers every activity
+ * present in the same range, so the fallback is only for a truncated workout list.
+ */
+function activityLabel(slug) {
+  const known = (state.summary?.byActivity ?? []).find((a) => a.activityType === slug);
+  if (known) return known.label;
+  return slug.replace(/(^|[-_])(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+}
+
+function emptyNote(text) {
+  const el = document.createElement("div");
+  el.className = "empty";
+  el.textContent = text;
+  return el;
+}
+
+/* ------------------------------------------------------------------ *
+ * Data loading
+ * ------------------------------------------------------------------ */
+
+class AuthError extends Error {}
+
+async function api(path, params) {
+  const url = new URL(path, location.origin);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  const response = await fetch(url, { headers: { "x-api-key": state.key } });
+  if (response.status === 401) throw new AuthError("Invalid API key");
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || `${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+let inFlight = 0;
+
+async function load() {
+  const token = ++inFlight;
+  const app = document.getElementById("app");
+  const errorBox = document.getElementById("error");
+
+  // Hold the previous render at reduced opacity rather than flashing a skeleton.
+  app.classList.add("stale");
+  errorBox.hidden = true;
+
+  try {
+    const scope = state.activity ? { activityType: state.activity } : {};
+    const range = rangeParams();
+    // Positional: the order here must match the destructuring exactly. A fourth request
+    // was once inserted in the middle, which silently handed the goals card the weight
+    // response and the weight card the goals report — both rendered empty, no error.
+    const [summary, workouts, weekly, weights] = await Promise.all([
+      api("/api/summary", { ...range, granularity: state.granularity, ...scope }),
+      api("/api/workouts", { ...range, limit: 10000, ...scope }),
+      // Goals are about the whole programme, so the review ignores the activity filter. It
+      // ends at the range's end — the week in progress for presets, so the strip's last
+      // cell is "this week so far".
+      api("/api/weekly", { weeks: Math.max(4, Math.min(52, Math.ceil(rangeDays() / 7))), until: state.to ?? "today" }),
+      // Body weight is not a workout: it ignores the activity filter and tolerates a
+      // missing table by rendering an empty card rather than failing the page.
+      api("/api/bodyweight", range).catch(() => ({ weights: [] })),
+    ]);
+    if (token !== inFlight) return;   // A newer request already superseded this one.
+
+    state.summary = summary;
+    state.workouts = workouts.workouts ?? [];
+    state.workoutsTruncated = Boolean(workouts.truncated);
+    state.weekly = weekly;
+    state.weights = weights.weights ?? [];
+    renderAll();
+  } catch (error) {
+    if (token !== inFlight) return;
+    if (error instanceof AuthError) {
+      signOut("That key was rejected.");
+      return;
+    }
+    errorBox.textContent = `Could not load workouts: ${error.message}`;
+    errorBox.hidden = false;
+  } finally {
+    if (token === inFlight) app.classList.remove("stale");
+  }
+}
+
+function renderAll() {
+  const from = new Date(state.summary.from).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const to = new Date(state.summary.to).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  document.getElementById("range-label").textContent = `${from} – ${to}`;
+
+  syncActivityOptions();
+  renderKpis();
+  renderTrend();
+  renderGoals();
+  renderWeight();
+  renderCalendar();
+  renderActivities();
+  renderRecent();
+  if (!document.getElementById("trend-table").hidden) renderTrendTable();
+}
+
+/**
+ * Rebuilds the activity list from the data.
+ *
+ * Only grows: an activity stays listed once seen, so selecting one does not cause every
+ * other option to vanish from the control that selected it.
+ */
+const knownActivities = new Map();
+
+function syncActivityOptions() {
+  for (const a of state.summary?.byActivity ?? []) knownActivities.set(a.activityType, a.label);
+
+  const select = document.getElementById("activity-filter");
+  const options = [["", "All activities"], ...[...knownActivities].sort((a, b) => a[1].localeCompare(b[1]))];
+  if (select.options.length === options.length && [...select.options].every((o, i) => o.value === options[i][0])) {
+    select.value = state.activity;
+    return;
+  }
+  select.replaceChildren(...options.map(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
+  select.value = state.activity;
+}
+
+/* ------------------------------------------------------------------ *
+ * Controls
+ * ------------------------------------------------------------------ */
+
+/**
+ * Wires a segmented button group once and returns its `select` function, so the
+ * selection can be updated later (a range change re-defaults the granularity)
+ * without binding a second click listener.
+ */
+function wireGroup(id, attr, onPick, initial) {
+  const group = document.getElementById(id);
+  const buttons = [...group.querySelectorAll("button")];
+  const select = (value) => {
+    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset[attr] === String(value)));
+  };
+  group.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    select(button.dataset[attr]);
+    onPick(button.dataset[attr]);
+  });
+  select(initial);
+  return select;
+}
+
+/* Day buckets over a long range produce hundreds of 1px columns, so a wide range
+   coarsens automatically — but only until the reader states a preference. Thresholds are
+   set by what stays legible: ~180 daily columns still give a visible bar at this width. */
+function defaultGranularity(days) {
+  if (days <= 180) return "day";
+  if (days <= 730) return "week";
+  return "month";
+}
+
+/* Once the granularity is chosen explicitly, changing the range must not silently undo
+   it — an auto-correction that overrides a deliberate choice reads as a bug. */
+let granularityIsExplicit = false;
+
+function initControls() {
+  const selectGranularity = wireGroup("gran-group", "gran", (value) => {
+    granularityIsExplicit = true;
+    state.granularity = value;
+    load();
+  }, state.granularity);
+
+  const customBox = document.getElementById("custom-range");
+  const fromInput = document.getElementById("range-from");
+  const toInput = document.getElementById("range-to");
+
+  const applyRange = () => {
+    if (!granularityIsExplicit) {
+      state.granularity = defaultGranularity(rangeDays());
+      selectGranularity(state.granularity);
+    }
+    load();
+  };
+
+  wireGroup("range-group", "days", (value) => {
+    if (value === "custom") {
+      // Seed the inputs from the current preset so "Custom" starts as a tweak, not a blank.
+      const end = new Date();
+      const start = new Date(end.getTime() - state.days * DAY_MS);
+      fromInput.value ||= start.toISOString().slice(0, 10);
+      toInput.value ||= end.toISOString().slice(0, 10);
+      customBox.hidden = false;
+      fromInput.focus();
+      return;
+    }
+    customBox.hidden = true;
+    state.from = state.to = null;
+    state.days = Number(value);
+    applyRange();
+  }, state.days);
+
+  document.getElementById("range-apply").addEventListener("click", () => {
+    if (!fromInput.value || !toInput.value || fromInput.value >= toInput.value) {
+      fromInput.focus();
+      return;
+    }
+    state.from = fromInput.value;
+    state.to = toInput.value;
+    applyRange();
+  });
+  for (const input of [fromInput, toInput]) {
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("range-apply").click(); });
+  }
+
+  wireGroup("metric-group", "metric", (value) => {
+    state.metric = value;
+    renderTrend();
+    // The table's columns depend on the metric now (heart rate is per workout), so an open
+    // table must follow the switch rather than keep showing the previous view's rows.
+    if (!document.getElementById("trend-table").hidden) renderTrendTable();
+  }, state.metric);
+
+  // One filter row scoping everything below it: the stats, every chart, and the table.
+  document.getElementById("activity-filter").addEventListener("change", (event) => {
+    state.activity = event.target.value;
+    load();
+  });
+
+  document.getElementById("toggle-weight-table").addEventListener("click", (event) => {
+    const panel = document.getElementById("weight-table");
+    panel.hidden = !panel.hidden;
+    event.target.textContent = panel.hidden ? "Show data table" : "Hide data table";
+    if (!panel.hidden) renderWeightTable();
+  });
+
+  document.getElementById("toggle-table").addEventListener("click", (event) => {
+    const panel = document.getElementById("trend-table");
+    panel.hidden = !panel.hidden;
+    event.target.textContent = panel.hidden ? "Show data table" : "Hide data table";
+    if (!panel.hidden) renderTrendTable();
+  });
+
+  document.getElementById("theme-toggle").addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme");
+    const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = current ? (current === "dark" ? "light" : "dark") : (prefersDark ? "light" : "dark");
+    document.documentElement.setAttribute("data-theme", next);
+    writeStored(THEME_STORAGE, next);
+  });
+
+  document.getElementById("sign-out").addEventListener("click", () => signOut());
+
+  // Charts are sized from their container, so they must be re-measured on resize.
+  let resizeTimer;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (state.summary) { renderTrend(); renderActivities(); renderWeight(); } }, 120);
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Key gate
+ * ------------------------------------------------------------------ */
+
+function signOut(message) {
+  state.key = "";
+  writeStored(KEY_STORAGE, "");
+  document.getElementById("app").hidden = true;
+  const gate = document.getElementById("gate");
+  gate.hidden = false;
+  const err = document.getElementById("gate-err");
+  err.hidden = !message;
+  if (message) err.textContent = message;
+  document.getElementById("gate-key").focus();
+}
+
+function start(key) {
+  state.key = key;
+  writeStored(KEY_STORAGE, key);
+  document.getElementById("gate").hidden = true;
+  document.getElementById("app").hidden = false;
+  load();
+}
+
+function init() {
+  const storedTheme = readStored(THEME_STORAGE);
+  if (storedTheme) document.documentElement.setAttribute("data-theme", storedTheme);
+
+  initControls();
+
+  document.getElementById("gate-go").addEventListener("click", () => {
+    const value = document.getElementById("gate-key").value.trim();
+    if (value) start(value);
+  });
+  document.getElementById("gate-key").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") document.getElementById("gate-go").click();
+  });
+
+  // A `?key=` lets the dashboard be opened from a bookmark or a Shortcut, but the
+  // secret is stripped from the URL immediately so it does not linger in history.
+  const fromUrl = new URL(location.href).searchParams.get("key");
+  if (fromUrl) history.replaceState(null, "", location.pathname);
+
+  const key = fromUrl || readStored(KEY_STORAGE);
+  if (key) start(key); else signOut();
+}
+
+init();
+</script>
+</body>
+</html>

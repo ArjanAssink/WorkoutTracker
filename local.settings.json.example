@@ -1,0 +1,21 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsFeatureFlags": "EnableWorkerIndexing",
+
+    "//": "UseDevelopmentStorage=true targets Azurite. Swap in a real connection string to run against Azure.",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+
+    "WORKOUTS_TABLE": "workouts",
+    "WORKOUTS_USER_ID": "me",
+
+    "//INGEST_API_KEY": "Generate with: openssl rand -base64 32",
+    "INGEST_API_KEY": "change-me-before-deploying",
+
+    "ATHLETE_RESTING_HR": "60",
+    "ATHLETE_MAX_HR": "185",
+    "ATHLETE_WEIGHT_KG": "80",
+    "ATHLETE_TRIMP_FACTOR": "1.92"
+  }
+}

@@ -1,0 +1,17 @@
+*.md
+.git*
+.vscode
+.github
+infra
+test
+scripts
+src
+tsconfig.json
+vitest.config.ts
+local.settings.json
+
+# The preview server is a dev tool; its compiled form has no business in production.
+dist/scripts
+
+# NOTE: public/ must NOT be listed here — the dashboard function reads public/index.html
+# out of the deployment package at runtime.

@@ -1,0 +1,40 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Azure Functions local runtime
+local.settings.json
+bin/
+obj/
+.python_packages/
+__azurite_db*__.json
+__blobstorage__/
+__queuestorage__/
+
+# Health data — never commit the export, it is your full medical history
+*.xml
+!infra/*.xml
+apple_health_export/
+export*.zip
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.publishsettings
+*.azurePubxml
+
+# Python scratch tooling
+__pycache__/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*

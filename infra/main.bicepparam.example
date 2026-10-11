@@ -1,0 +1,12 @@
+using './main.bicep'
+
+param namePrefix = 'workouts'
+param location = 'westeurope'
+
+// Generate with: openssl rand -base64 32
+param ingestApiKey = 'REPLACE_ME'
+
+param restingHeartRate = 60
+param maxHeartRate = 185
+param weightKg = 80
+param trimpFactor = '1.92'
