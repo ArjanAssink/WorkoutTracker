@@ -185,6 +185,8 @@ function buildTable(headers, rows) {
   for (const r of rows) { const tr = document.createElement("tr"); for (const cell of r) { const td = document.createElement("td"); const s = typeof cell === "string" ? { text: cell } : cell; if (s.num) td.className = "num"; if (s.el) td.appendChild(s.el); else td.textContent = s.text; tr.appendChild(td); } tb.appendChild(tr); }
   t.append(th, tb); return t;
 }
+/* "8 Oct" when fresh, "8 Oct · 3 days ago" when the newest row is older than yesterday — a stale export must not read as last night. */
+function ago(iso) { const days = Math.round((Date.now() - Date.parse(`${iso}T12:00:00Z`)) / 86_400_000); return days <= 1 ? "" : ` · ${days} days ago`; }
 const fmtDate = (iso, opts = { day: "numeric", month: "short" }) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { ...opts, timeZone: "UTC" });
 const hm = (sec) => { if (sec === undefined) return "—"; const m = Math.round(sec / 60), h = Math.floor(m / 60); return `${h}h ${String(m % 60).padStart(2, "0")}m`; };
 const clock = (min) => (min === undefined ? "—" : `${String(Math.floor((min % 1440) / 60)).padStart(2, "0")}:${String(Math.round(min % 60)).padStart(2, "0")}`);
@@ -201,7 +203,7 @@ function renderKpis() {
   const cur = state.data.current;
   if (cur) {
     const el = document.createElement("div"); el.className = "tile rating"; el.style.gridColumn = "span 2";
-    const l = document.createElement("div"); l.className = "label"; l.textContent = `Recovery now · ${fmtDate(cur.date)}`; el.appendChild(l);
+    const l = document.createElement("div"); l.className = "label"; l.textContent = `Recovery${ago(cur.date) ? "" : " now"} · ${fmtDate(cur.date)}${ago(cur.date)}`; el.appendChild(l);
     const v = document.createElement("div"); v.className = "value"; const n = document.createElement("span"); n.textContent = `${cur.rating.score}`; const w = document.createElement("span"); w.className = "word rate"; w.dataset.l = cur.rating.label; w.textContent = cur.rating.label; v.append(n, w); el.appendChild(v);
     const parts = document.createElement("div"); parts.className = "parts";
     for (const c of cur.rating.components) { const k = document.createElement("span"); k.textContent = c.label; const bar = document.createElement("i"); const fill = document.createElement("b"); fill.style.width = `${c.score}%`; fill.style.background = c.score >= 80 ? "var(--status-good)" : c.score >= 50 ? "var(--status-warn)" : "var(--status-bad)"; bar.appendChild(fill); const d = document.createElement("span"); d.textContent = `${c.score} · ${c.detail}`; parts.append(k, bar, d); }
@@ -210,7 +212,7 @@ function renderKpis() {
   const night = last(days, (d) => d.sleepAsleepSeconds);
   if (night) {
     const d = night.d, vs = typical.asleepSeconds ? Math.round((d.sleepAsleepSeconds - typical.asleepSeconds) / 60) : undefined;
-    tile(`Last night · ${fmtDate(d.date)}`, hm(d.sleepAsleepSeconds), "", `${d.sleepStaged ? `deep ${hm(d.sleepDeepSeconds)} · REM ${hm(d.sleepRemSeconds)} · ` : ""}${d.sleepAwakenings ?? 0} wake-ups · in bed ${clock(d.bedtimeMinutes)}–${clock(d.wakeMinutes)}`,
+    tile(`${ago(d.date) ? "Latest night" : "Last night"} · ${fmtDate(d.date)}${ago(d.date)}`, hm(d.sleepAsleepSeconds), "", `${d.sleepStaged ? `deep ${hm(d.sleepDeepSeconds)} · REM ${hm(d.sleepRemSeconds)} · ` : ""}${d.sleepAwakenings ?? 0} wake-ups · in bed ${clock(d.bedtimeMinutes)}–${clock(d.wakeMinutes)}`,
       vs === undefined ? undefined : { text: `${vs >= 0 ? "+" : "−"}${Math.abs(vs)} min vs typical ${hm(typical.asleepSeconds)}`, s: vs >= -30 ? "good" : vs >= -75 ? "warn" : "bad" });
   }
   const week = days.slice(-7).map((d) => d.sleepAsleepSeconds).filter((x) => x !== undefined);
@@ -222,13 +224,13 @@ function renderKpis() {
   const rhr = last(days, (d) => d.restingHeartRate);
   if (rhr) {
     const b = rhr.d.restingHeartRateBaseline, delta = b === undefined ? undefined : rhr.v - b;
-    tile(`Resting HR · ${fmtDate(rhr.d.date)}`, `${rhr.v}`, "bpm", b === undefined ? "no 28-day baseline yet" : `28-day baseline ${b}`,
+    tile(`Resting HR · ${fmtDate(rhr.d.date)}${ago(rhr.d.date)}`, `${rhr.v}`, "bpm", b === undefined ? "no 28-day baseline yet" : `28-day baseline ${b}`,
       delta === undefined ? undefined : { text: `${delta > 0 ? "+" : ""}${Math.round(delta)} vs baseline`, s: delta <= 2 ? "good" : delta <= 5 ? "warn" : "bad" });
   }
   const hrv = last(days, (d) => d.hrv);
   if (hrv) {
     const b = hrv.d.hrvBaseline, pct = b ? Math.round(((hrv.v - b) / b) * 100) : undefined;
-    tile(`HRV · ${fmtDate(hrv.d.date)}`, `${Math.round(hrv.v)}`, "ms", b === undefined ? "no 28-day baseline yet" : `28-day baseline ${Math.round(b)} · ${hrv.d.hrvSamples ?? "?"} readings`,
+    tile(`HRV · ${fmtDate(hrv.d.date)}${ago(hrv.d.date)}`, `${Math.round(hrv.v)}`, "ms", b === undefined ? "no 28-day baseline yet" : `28-day baseline ${Math.round(b)} · ${hrv.d.hrvSamples ?? "?"} readings`,
       pct === undefined ? undefined : { text: `${pct > 0 ? "+" : ""}${pct}% vs baseline`, s: pct >= -10 ? "good" : pct >= -25 ? "warn" : "bad" });
   }
   const beds = days.slice(-14).map((d) => d.bedtimeMinutes).filter((x) => x !== undefined);
