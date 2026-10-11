@@ -56,7 +56,7 @@ export function detectMilestones(ctx: MilestoneContext): Milestone[] {
   if (week.verdict === "perfect") {
     out.push({
       key: "perfect",
-      implies: ["good", "volume"],
+      implies: ["good", "volume", ...ctx.spec.targets.map((t) => `target:${t.activityType}`)],
       text: `🏆 <b>Perfect week</b> — every target hit${by}, ${week.totalSessions} sessions.${streak}`,
     });
   } else if (week.verdict === "good") {
@@ -70,6 +70,18 @@ export function detectMilestones(ctx: MilestoneContext): Milestone[] {
       out.push({
         key: "volume",
         text: `🧩 ${week.totalSessions} sessions — a perfect week's worth, just not its shape: ${toGo} missing.`,
+      });
+    }
+  }
+
+  // Each target ticked off is its own checkpoint — the third strength session is news on
+  // Wednesday, not only once the week as a whole is perfect.
+  if (week.verdict !== "perfect") {
+    for (const t of week.targets.filter((x) => x.met)) {
+      const rest = missing.filter((m) => m !== t).map((m) => `${m.sessions - m.actual}× ${escape(m.label)}`).join(", ");
+      out.push({
+        key: `target:${t.activityType}`,
+        text: `☑️ <b>${escape(t.label)} ${t.actual}/${t.sessions}</b> — target done for the week${by}.${rest ? ` Still open: ${rest}.` : ""}`,
       });
     }
   }

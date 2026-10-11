@@ -243,7 +243,8 @@ to Telegram:
 | Key | When |
 | --- | --- |
 | `good` | The week reaches the good threshold; the message says what a perfect one still needs. |
-| `perfect` | Every target met. Supersedes `good`. |
+| `target:<activity>` | One target ticked off — the third strength session of the week — with what is still open. |
+| `perfect` | Every target met. Supersedes `good` and the target checkpoints. |
 | `volume` | As many sessions as a perfect week needs, but not its shape — "6 sessions, Capoeira still missing". |
 | `streak:N` | The week is good or perfect and makes it 4, 8, 12, 26 or 52 in a row. |
 | `effort-high` | Effort already above every completed week of the past year (needs 12 weeks of history). |

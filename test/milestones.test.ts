@@ -44,13 +44,28 @@ describe("detectMilestones", () => {
     w("2026-03-10T19:00:00Z", "martialarts"), w("2026-03-12T19:00:00Z", "martialarts"), w("2026-03-14T10:00:00Z", "taichi"),
   ];
 
-  it("says nothing about a week that is still short", () => {
-    expect(keys(context(perfect.slice(0, 3), []))).toEqual([]);
+  it("says nothing about a week that is still short of every target", () => {
+    expect(keys(context(perfect.slice(0, 2), []))).toEqual([]);
+  });
+
+  it("ticks off each target as it is met, saying what is still open", () => {
+    const ms = detectMilestones(context(perfect.slice(0, 3), [])); // three strength sessions, nothing else
+    expect(ms.map((m) => m.key)).toEqual(["target:strength"]);
+    expect(ms[0]!.text).toContain("Strength Training 3/3");
+    expect(ms[0]!.text).toContain("Still open: 2× BJJ, 1× Capoeira.");
+  });
+
+  it("a perfect week implies every target checkpoint, so none is repeated", () => {
+    const [m] = detectMilestones(context(perfect, []));
+    expect(m!.implies).toEqual(expect.arrayContaining(["target:strength", "target:martialarts", "target:taichi"]));
+    expect(keys(context(perfect, []))).not.toContain("target:strength");
   });
 
   it("announces a good week and what a perfect one still needs", () => {
     const five = perfect.filter((x) => x.activityType !== "taichi");
-    const [m] = detectMilestones(context(five, []));
+    const ms = detectMilestones(context(five, []));
+    expect(ms.map((m) => m.key)).toEqual(["good", "target:strength", "target:martialarts"]);
+    const m = ms[0];
     expect(m!.key).toBe("good");
     expect(m!.text).toContain("5 sessions by Friday");
     expect(m!.text).toContain("1× Capoeira");
@@ -67,6 +82,7 @@ describe("detectMilestones", () => {
     const six = [...perfect.filter((x) => x.activityType !== "taichi"), w("2026-03-14T10:00:00Z", "running")];
     const ks = keys(context(six, []));
     expect(ks).toContain("good");
+    expect(ks).toContain("target:strength");
     expect(ks).toContain("volume");
     expect(detectMilestones(context(six, [])).find((m) => m.key === "volume")!.text).toContain("1× Capoeira missing");
   });
