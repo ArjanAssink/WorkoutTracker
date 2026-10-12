@@ -139,6 +139,11 @@ describe("extractRecovery — Health Auto Export metrics", () => {
     const [d] = dailyRecovery(extractRecovery(body), "health-auto-export");
     expect(d).toMatchObject({ date: "2026-10-08", restingHeartRate: 57, hrv: 48.2, spo2: 97, sleepAsleepSeconds: 25200 });
   });
+  it("reads a real watch night where `asleep` is the unspecified stage and `totalSleep` the total", () => {
+    const body = { data: { metrics: [{ name: "sleep_analysis", units: "hr", data: [{ date: "2026-10-12 00:00:00 +0200", asleep: 0, totalSleep: 7.42, core: 4.9, deep: 0.7, rem: 1.82, awake: 0.12, inBed: 7.6, sleepStart: "2026-10-11 23:20:00 +0200", sleepEnd: "2026-10-12 06:52:00 +0200", inBedStart: "2026-10-11 23:10:00 +0200", inBedEnd: "2026-10-12 06:55:00 +0200", source: "Watch" }] }] } };
+    const [d] = dailyRecovery(extractRecovery(body), "health-auto-export");
+    expect(d).toMatchObject({ date: "2026-10-12", sleepAsleepSeconds: Math.round(7.42 * 3600), sleepDeepSeconds: Math.round(0.7 * 3600), sleepStaged: true, bedtimeMinutes: 23 * 60 + 20, wakeMinutes: 6 * 60 + 52 });
+  });
   it("does not mistake the sleeping wrist temperature for the night", () => {
     const body = { data: { metrics: [{ name: "apple_sleeping_wrist_temperature", units: "degC", data: [{ date: "2026-10-08 07:00:00 +0200", qty: 36.1, source: "Watch" }] }] } };
     const { samples, nights } = extractRecovery(body);

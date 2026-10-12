@@ -130,9 +130,13 @@ export function extractRecovery(body: unknown): { samples: RecoverySample[]; nig
         const end = str(p["sleepEnd"]) ?? str(p["inBedEnd"]) ?? str(p["date"]);
         if (!end) continue;
         const hours = (k: string) => num(p[k]);
+        // `asleep` is the *unspecified* stage — zero on a watch that records stages — and
+        // `totalSleep` the stage total; take whichever is larger, never `asleep` alone.
+        const staged = (hours("core") ?? 0) + (hours("deep") ?? 0) + (hours("rem") ?? 0);
+        const asleepHours = Math.max(hours("totalSleep") ?? 0, (hours("asleep") ?? 0) + staged);
         nights.push(strip({
           end, start: str(p["sleepStart"]) ?? str(p["inBedStart"]),
-          inBedHours: hours("inBed"), asleepHours: hours("asleep") ?? hours("totalSleep"), coreHours: hours("core"),
+          inBedHours: hours("inBed"), asleepHours: asleepHours > 0 ? asleepHours : undefined, coreHours: hours("core"),
           deepHours: hours("deep"), remHours: hours("rem"), awakeHours: hours("awake"), sourceName: str(p["source"]) ?? "Health Auto Export",
         }) as NightSummary);
       }
