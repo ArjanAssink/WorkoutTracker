@@ -170,7 +170,7 @@ function describeSleepShape(body: unknown): string | undefined {
   const data = (body as Record<string, unknown>)["data"];
   const metrics = typeof data === "object" && data !== null ? (data as Record<string, unknown>)["metrics"] : undefined;
   if (!Array.isArray(metrics)) return undefined;
-  const sleep = metrics.find((m) => typeof m === "object" && m !== null && /sleep/i.test(String((m as Record<string, unknown>)["name"] ?? "")));
+  const sleep = metrics.find((m) => typeof m === "object" && m !== null && /^sleep_analysis$|^sleep$/i.test(String((m as Record<string, unknown>)["name"] ?? "")));
   if (!sleep) return undefined;
   const m = sleep as Record<string, unknown>;
   const points = Array.isArray(m["data"]) ? m["data"] : [];

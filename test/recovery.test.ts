@@ -139,6 +139,12 @@ describe("extractRecovery — Health Auto Export metrics", () => {
     const [d] = dailyRecovery(extractRecovery(body), "health-auto-export");
     expect(d).toMatchObject({ date: "2026-10-08", restingHeartRate: 57, hrv: 48.2, spo2: 97, sleepAsleepSeconds: 25200 });
   });
+  it("does not mistake the sleeping wrist temperature for the night", () => {
+    const body = { data: { metrics: [{ name: "apple_sleeping_wrist_temperature", units: "degC", data: [{ date: "2026-10-08 07:00:00 +0200", qty: 36.1, source: "Watch" }] }] } };
+    const { samples, nights } = extractRecovery(body);
+    expect(nights).toEqual([]);
+    expect(samples.map((s) => s.metric)).toEqual(["wristTemperature"]);
+  });
   it("returns nothing for a payload without metrics", () => {
     expect(extractRecovery({ data: { workouts: [] } })).toEqual({ samples: [], nights: [] });
   });

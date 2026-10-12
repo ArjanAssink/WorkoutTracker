@@ -122,7 +122,8 @@ export function extractRecovery(body: unknown): { samples: RecoverySample[]; nig
     const m = metric as Record<string, unknown>;
     const name = String(m["name"] ?? "").toLowerCase();
     const points = Array.isArray(m["data"]) ? m["data"] : [];
-    if (/sleep/.test(name)) {
+    // "sleep_analysis" is the night; "apple_sleeping_wrist_temperature" is not, despite the word.
+    if (/^sleep_analysis$|^sleep$/.test(name)) {
       for (const point of points) {
         if (typeof point !== "object" || point === null) continue;
         const p = point as Record<string, unknown>;
