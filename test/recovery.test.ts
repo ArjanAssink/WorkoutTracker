@@ -126,7 +126,7 @@ describe("circularSd", () => {
 describe("extractRecovery — Health Auto Export metrics", () => {
   it("reads nights and the quantities, ignoring metrics it does not know", () => {
     const body = { data: { metrics: [
-      { name: "sleep_analysis", units: "hr", data: [{ date: "2026-10-08 06:50:00 +0200", sleepStart: "2026-10-07 23:30:00 +0200", sleepEnd: "2026-10-08 06:50:00 +0200", inBed: 7.7, asleep: 7, core: 4.8, deep: 0.8, rem: 1.4, awake: 0.1, source: "Watch" }] },
+      { name: "sleep_analysis", units: "hr", data: [{ date: "2026-10-08 06:50:00 +0200", sleepStart: "2026-10-07 23:30:00 +0200", sleepEnd: "2026-10-08 06:50:00 +0200", inBed: 7.7, asleep: 0, totalSleep: 7, core: 4.8, deep: 0.8, rem: 1.4, awake: 0.1, source: "Watch" }] },
       { name: "resting_heart_rate", units: "bpm", data: [{ date: "2026-10-08 00:18:00 +0200", qty: 57 }] },
       { name: "heart_rate_variability", units: "ms", data: [{ date: "2026-10-08 03:18:00 +0200", qty: 48.2 }] },
       { name: "blood_oxygen_saturation", units: "%", data: [{ date: "2026-10-08 10:00:00 +0200", qty: 97 }] },
