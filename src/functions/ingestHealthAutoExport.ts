@@ -67,6 +67,9 @@ export async function ingestHealthAutoExport(
   // missing sleep row can be traced to the app's settings rather than guessed at.
   const metricNames = listMetricNames(body);
   if (metricNames.length) context.log(`Health Auto Export metrics: ${metricNames.join(", ")}`);
+  // The sleep entry's shape is documented loosely; log its field names (never values) once per batch.
+  const sleepShape = describeSleepShape(body);
+  if (sleepShape) context.log(`Health Auto Export sleep entry shape: ${sleepShape}`);
   const recovery = dailyRecovery(extractRecovery(body), "health-auto-export");
   let recoveryWritten = 0;
   if (recovery.length > 0) {
@@ -160,4 +163,18 @@ function listMetricNames(body: unknown): string[] {
   const metrics = typeof data === "object" && data !== null ? (data as Record<string, unknown>)["metrics"] : undefined;
   if (!Array.isArray(metrics)) return [];
   return metrics.map((m) => (typeof m === "object" && m !== null ? String((m as Record<string, unknown>)["name"] ?? "?") : "?")).map((n) => n.slice(0, 40));
+}
+
+function describeSleepShape(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const data = (body as Record<string, unknown>)["data"];
+  const metrics = typeof data === "object" && data !== null ? (data as Record<string, unknown>)["metrics"] : undefined;
+  if (!Array.isArray(metrics)) return undefined;
+  const sleep = metrics.find((m) => typeof m === "object" && m !== null && /sleep/i.test(String((m as Record<string, unknown>)["name"] ?? "")));
+  if (!sleep) return undefined;
+  const m = sleep as Record<string, unknown>;
+  const points = Array.isArray(m["data"]) ? m["data"] : [];
+  const first = points.find((p) => typeof p === "object" && p !== null) as Record<string, unknown> | undefined;
+  const keys = first ? Object.keys(first).map((k) => `${k}:${typeof first[k]}`).join(",") : "no object entries";
+  return `units=${String(m["units"] ?? "?")} entries=${points.length} fields={${keys}}`;
 }
