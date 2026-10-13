@@ -234,6 +234,17 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .dots b { color: var(--text-primary); font-weight: 400; }
 .dots s { color: var(--grid); text-decoration: none; }
 .week-now { background: var(--hover-wash); }
+/* On a phone the week table loses its right-hand columns, so each week becomes a card:
+   verdict as the left edge, targets as chips, totals on one line. Same data, no table. */
+.goal-list { display: none; }
+.week-card { border: 1px solid var(--border); border-left: 4px solid var(--grid); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
+.week-card[data-v="perfect"] { border-left-color: var(--status-good); } .week-card[data-v="good"] { border-left-color: var(--series-1); } .week-card[data-v="short"] { border-left-color: var(--status-warn); }
+.week-card.week-now { background: var(--hover-wash); }
+.week-card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.week-card .when { font-weight: 600; } .week-card .total { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.week-card .chips { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 5px; } .week-card .chip { display: inline-flex; gap: 6px; align-items: baseline; color: var(--text-muted); font-size: 12px; }
+.week-card .meta { margin-top: 4px; font-size: 12px; color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 640px) { #goal-table { display: none; } .goal-list { display: block; } }
 .goal-head { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
 .goal-head b { color: var(--text-primary); font-weight: 600; }
 
@@ -353,6 +364,7 @@ tbody tr:last-child td { border-bottom: 0; }
         <span><i style="background:var(--status-warn)"></i>Short</span>
       </div>
       <div id="goal-table"></div>
+      <div id="goal-list" class="goal-list"></div>
     </div>
 
     <div class="card">
@@ -1152,6 +1164,25 @@ function renderGoals() {
   ]);
   table.replaceChildren(buildTable(headers, rows));
   table.querySelector("tbody tr")?.classList.add("week-now");
+
+  // The phone view: one card per week, newest first.
+  const shortLabel = (label) => (label.length > 10 ? label.split(/\s+/)[0] : label);
+  document.getElementById("goal-list").replaceChildren(...[...weeks].reverse().map((wk, i) => {
+    const card = document.createElement("div"); card.className = `week-card${i === 0 ? " week-now" : ""}`; card.dataset.v = wk.verdict;
+    const row = document.createElement("div"); row.className = "row";
+    const when = document.createElement("span"); when.className = "when"; when.append(verdictEl(wk.verdict), document.createTextNode(`  ${fmtWeek(wk.weekStart)}${i === 0 ? " · so far" : ""}`));
+    const total = document.createElement("span"); total.className = "total"; total.textContent = `${wk.totalSessions} session${wk.totalSessions === 1 ? "" : "s"}`;
+    row.append(when, total);
+    const chips = document.createElement("div"); chips.className = "chips";
+    for (const t of wk.targets) { const c = document.createElement("span"); c.className = "chip"; const l = document.createElement("span"); l.textContent = shortLabel(t.label); c.append(l, dotsEl(t.actual, t.sessions)); chips.appendChild(c); }
+    if (wk.otherSessions) { const c = document.createElement("span"); c.className = "chip"; c.textContent = `+${wk.otherSessions} other`; chips.appendChild(c); }
+    const meta = document.createElement("div"); meta.className = "meta";
+    const time = document.createElement("span"); time.textContent = formatDuration(wk.durationSeconds);
+    const effort = document.createElement("span"); effort.append(document.createTextNode("effort "), effortCell(wk));
+    meta.append(time, effort);
+    card.append(row, chips, meta);
+    return card;
+  }));
 }
 
 /** "312 ▲30%" — the number, then how it sits against the twelve weeks before it. */
