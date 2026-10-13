@@ -52,6 +52,13 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 .tile.rating .parts i { display: block; height: 4px; border-radius: 2px; background: var(--grid); position: relative; } .tile.rating .parts i b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
 .rate { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; } .rate::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--grid); }
 .rate[data-l="recovered"]::before { background: var(--status-good); } .rate[data-l="okay"]::before { background: var(--status-good); opacity: 0.55; } .rate[data-l="under-recovered"]::before { background: var(--status-warn); } .rate[data-l="run down"]::before { background: var(--status-bad); }
+/* Phone: the week table loses its right-hand columns, so each week becomes a card. */
+.week-list { display: none; }
+.week-card { border: 1px solid var(--border); border-left: 4px solid var(--grid); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
+.week-card[data-l="recovered"] { border-left-color: var(--status-good); } .week-card[data-l="okay"] { border-left-color: var(--status-good); opacity: 0.95; } .week-card[data-l="under-recovered"] { border-left-color: var(--status-warn); } .week-card[data-l="run down"] { border-left-color: var(--status-bad); }
+.week-card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .week-card .when { font-weight: 600; } .week-card .total { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.week-card .meta { margin-top: 4px; font-size: 12px; color: var(--text-muted); display: flex; gap: 4px 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { #weeks { display: none; } .week-list { display: block; } }
 .stale { opacity: 0.45; transition: opacity 120ms ease; }
 svg { display: block; width: 100%; overflow: visible; } svg text { fill: var(--text-muted); font-size: 11px; }
 svg .tick-value { font-variant-numeric: tabular-nums; } svg .grid-line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; } svg .axis-line { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
@@ -135,6 +142,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
     <div class="card">
       <div class="card-head"><h2>Week by week — load against recovery</h2><span class="note" id="weeks-note"></span></div>
       <div class="scroll" id="weeks"></div>
+      <div class="week-list" id="week-list"></div>
     </div>
 
     <div class="card">
@@ -362,6 +370,22 @@ function renderWeeks() {
       { text: w.asleepSeconds === undefined ? "—" : hm(w.asleepSeconds), num: true }, { text: w.deepPct === undefined ? "—" : `${w.deepPct.toFixed(0)}%`, num: true }, { text: w.remPct === undefined ? "—" : `${w.remPct.toFixed(0)}%`, num: true },
       { text: w.awakenings === undefined ? "—" : w.awakenings.toFixed(1), num: true }, w.bedtimeMinutes === undefined ? "—" : `${clock(w.bedtimeMinutes)}${w.bedtimeSdMinutes !== undefined ? ` ±${w.bedtimeSdMinutes}` : ""}`,
       { text: w.restingHeartRate === undefined ? "—" : `${w.restingHeartRate.toFixed(0)}`, num: true }, { text: w.hrv === undefined ? "—" : `${w.hrv.toFixed(0)}`, num: true }])));
+  // The phone view: one card per week, newest first — rating as the edge, the rest in two lines.
+  document.getElementById("week-list").replaceChildren(...weeks.map((w) => {
+    const card = document.createElement("div"); card.className = "week-card"; if (w.rating) card.dataset.l = w.rating.label;
+    const row = document.createElement("div"); row.className = "row";
+    const when = document.createElement("span"); when.className = "when";
+    if (w.rating) { const r = document.createElement("span"); r.className = "rate"; r.dataset.l = w.rating.label; r.textContent = `${w.rating.score}`; when.append(r, document.createTextNode("  ")); }
+    when.append(document.createTextNode(fmtDate(w.weekStart, { day: "numeric", month: "short" })));
+    const total = document.createElement("span"); total.className = "total"; total.textContent = `${w.sessions} session${w.sessions === 1 ? "" : "s"} · effort ${Math.round(w.effort)}`;
+    row.append(when, total);
+    const sleep = document.createElement("div"); sleep.className = "meta";
+    for (const t of [w.asleepSeconds === undefined ? null : `sleep ${hm(w.asleepSeconds)}`, w.deepPct === undefined ? null : `deep ${w.deepPct.toFixed(0)}%`, w.remPct === undefined ? null : `REM ${w.remPct.toFixed(0)}%`, w.awakenings === undefined ? null : `${w.awakenings.toFixed(1)} wake-ups`].filter(Boolean)) { const sp = document.createElement("span"); sp.textContent = t; sleep.appendChild(sp); }
+    const heart = document.createElement("div"); heart.className = "meta";
+    for (const t of [w.bedtimeMinutes === undefined ? null : `bed ${clock(w.bedtimeMinutes)}${w.bedtimeSdMinutes !== undefined ? ` ±${w.bedtimeSdMinutes}` : ""}`, w.restingHeartRate === undefined ? null : `RHR ${w.restingHeartRate.toFixed(0)}`, w.hrv === undefined ? null : `HRV ${w.hrv.toFixed(0)}`].filter(Boolean)) { const sp = document.createElement("span"); sp.textContent = t; heart.appendChild(sp); }
+    card.append(row, sleep, heart);
+    return card;
+  }));
   // The question the table exists for: do hard weeks cost sleep or raise the resting pulse?
   const paired = state.data.weeks.filter((w) => w.effort > 0 && w.restingHeartRate !== undefined);
   if (paired.length >= 6) {
