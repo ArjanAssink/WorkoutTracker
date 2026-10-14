@@ -236,11 +236,18 @@ function photoEl(p) {
   const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = `${new Date(p.takenAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · ${p.caption || p.activityName}`; a.appendChild(cap);
   return a;
 }
+/* The photos obey the same switches as the map: activities, range, and the place when one is the hero. */
+function visiblePhotos() {
+  const since = state.range === "all" ? "" : new Date(Date.now() - Number(state.range) * 365.25 * 86_400_000).toISOString();
+  const routeById = new Map(state.data.routes.map((r) => [r.id, r]));
+  return state.photos.filter((p) => state.activities.has(p.activityType) && p.takenAt >= since && (state.view === "home" || (p.workoutId && routeById.get(p.workoutId)?.place === state.place)));
+}
 function renderPhotos() {
   const card = document.getElementById("photos-card"), host = document.getElementById("photos"), note = document.getElementById("photos-note");
   if (!state.photos.length) { card.hidden = true; return; }
-  card.hidden = false; const shown = state.photos.slice(0, 48);
-  note.textContent = `${state.photos.length} from Strava · newest first${state.photos.length > shown.length ? ` · showing ${shown.length}` : ""}`;
+  const ps = visiblePhotos(); card.hidden = false; const shown = ps.slice(0, 48);
+  const where = state.view === "home" ? "" : ` · ${document.getElementById("hero-title").textContent}`;
+  note.textContent = ps.length ? `${ps.length} of ${state.photos.length} from Strava${where} · newest first${ps.length > shown.length ? ` · showing ${shown.length}` : ""}` : `none of the ${state.photos.length} photos match the switches above`;
   host.replaceChildren(...shown.map(photoEl));
 }
 hero.addEventListener("pointerleave", () => { drag = null; hero.classList.remove("dragging"); if (state.hover) { state.hover = null; renderHero(); } tip.dataset.show = "0"; });
@@ -307,8 +314,8 @@ function renderOverviewLeaflet() {
   if (omarkers) omarkers.remove(); omarkers = L.layerGroup().addTo(omap);
   const homeRoutes = routes.filter((r) => r.place === null).length;
   for (const pl of places) { const m = L.circleMarker([pl.centre.lat, pl.centre.lon], { radius: 4 + Math.sqrt(pl.routes) * 2, color: "#fff", weight: 1.5, fillColor: css("--glow"), fillOpacity: 0.85 }).addTo(omarkers);
-    m.bindTooltip(`${placeName(pl) ?? `${pl.centre.lat.toFixed(2)}°, ${pl.centre.lon.toFixed(2)}°`} · ${pl.routes} route${pl.routes === 1 ? "" : "s"}`); m.on("click", () => { state.view = "place"; state.place = pl.index; state.cam = null; state.hover = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); }); }
-  const hm = L.circleMarker([home.lat, home.lon], { radius: 6 + Math.sqrt(homeRoutes) * 0.5, color: css("--glow"), weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(omarkers); hm.bindTooltip(`Home · ${homeRoutes} routes`); hm.on("click", () => { state.view = "home"; state.place = null; state.cam = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); });
+    m.bindTooltip(`${placeName(pl) ?? `${pl.centre.lat.toFixed(2)}°, ${pl.centre.lon.toFixed(2)}°`} · ${pl.routes} route${pl.routes === 1 ? "" : "s"}`); m.on("click", () => { state.view = "place"; state.place = pl.index; state.cam = null; state.hover = null; renderAll(); renderPhotos(); scrollTo({ top: 0, behavior: "smooth" }); }); }
+  const hm = L.circleMarker([home.lat, home.lon], { radius: 6 + Math.sqrt(homeRoutes) * 0.5, color: css("--glow"), weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(omarkers); hm.bindTooltip(`Home · ${homeRoutes} routes`); hm.on("click", () => { state.view = "home"; state.place = null; state.cam = null; renderAll(); renderPhotos(); scrollTo({ top: 0, behavior: "smooth" }); });
   const pts = [[home.lat, home.lon], ...places.map((p) => [p.centre.lat, p.centre.lon])]; omap.fitBounds(pts, { padding: [30, 30], animate: false, maxZoom: 8 });
 }
 function renderOverview() {
@@ -346,7 +353,7 @@ ov.addEventListener("pointermove", (e) => { const h = ovPick(e); if (!h) { tip.d
   const row = document.createElement("div"); row.className = "tip-row"; const v = document.createElement("span"); v.className = "v"; v.textContent = h.home ? `${state.data.routes.filter((r) => r.place === null).length} routes` : `${h.place.routes} route${h.place.routes === 1 ? "" : "s"} · ${h.place.first.slice(0, 7)}${h.place.first.slice(0, 7) !== h.place.last.slice(0, 7) ? ` – ${h.place.last.slice(0, 7)}` : ""}`; row.append(v); tip.appendChild(row);
   tip.dataset.show = "1"; tip.style.left = `${Math.min(innerWidth - 220, e.clientX + 14)}px`; tip.style.top = `${Math.max(8, e.clientY - 50)}px`; });
 ov.addEventListener("pointerleave", () => { tip.dataset.show = "0"; });
-ov.addEventListener("click", (e) => { const h = ovPick(e); if (!h) return; if (h.home) { state.view = "home"; state.place = null; } else { state.view = "place"; state.place = h.place.index; } state.cam = null; state.hover = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); });
+ov.addEventListener("click", (e) => { const h = ovPick(e); if (!h) return; if (h.home) { state.view = "home"; state.place = null; } else { state.view = "place"; state.place = h.place.index; } state.cam = null; state.hover = null; renderAll(); renderPhotos(); scrollTo({ top: 0, behavior: "smooth" }); });
 
 /* ---- away places: a small canvas each; click to make it the hero ---- */
 function renderPlaces() {
@@ -363,7 +370,7 @@ function renderPlaces() {
     const name = document.createElement("b"); name.textContent = placeName(p) ?? `${p.centre.lat.toFixed(2)}°, ${p.centre.lon.toFixed(2)}°`; name.dataset.place = p.index;
     const nPhotos = rs.reduce((n, r) => n + (state.photosByWorkout.get(r.id) ?? []).length, 0);
     const l = document.createElement("div"); l.className = "l"; l.textContent = `${p.routes} route${p.routes === 1 ? "" : "s"} · ${Math.round(rs.reduce((n, r) => n + r.distanceMeters, 0) / 1000)} km · ${p.first.slice(0, 7)}${p.first.slice(0, 7) !== p.last.slice(0, 7) ? ` – ${p.last.slice(0, 7)}` : ""}${nPhotos ? ` · 📷 ${nPhotos}` : ""}`;
-    btn.append(c, name, l); btn.addEventListener("click", () => { state.view = "place"; state.place = p.index; state.cam = null; state.hover = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); });
+    btn.append(c, name, l); btn.addEventListener("click", () => { state.view = "place"; state.place = p.index; state.cam = null; state.hover = null; renderAll(); renderPhotos(); scrollTo({ top: 0, behavior: "smooth" }); });
     return btn;
   }));
   nameAll();
@@ -412,10 +419,11 @@ async function load() {
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     state.data = await r.json(); prepare(state.data);
     try { const pr = await fetch("/api/photos", { headers: { "x-api-key": state.key } }); if (pr.ok) { state.photos = (await pr.json()).photos ?? []; state.photosByWorkout = new Map(); for (const p of state.photos) if (p.workoutId) (state.photosByWorkout.get(p.workoutId) ?? state.photosByWorkout.set(p.workoutId, []).get(p.workoutId)).push(p); } } catch { /* no photos is fine */ }
-    const acts = [...new Set(state.data.routes.map((x) => x.activityType))].sort((a, b) => state.data.routes.filter((x) => x.activityType === b).length - state.data.routes.filter((x) => x.activityType === a).length);
+    const countRoutes = (a) => state.data.routes.filter((x) => x.activityType === a).length, countPhotos = (a) => state.photos.filter((x) => x.activityType === a).length;
+    const acts = [...new Set([...state.data.routes.map((x) => x.activityType), ...state.photos.map((x) => x.activityType)])].sort((a, b) => countRoutes(b) - countRoutes(a) || countPhotos(b) - countPhotos(a));
     state.activities = new Set(acts);
-    const g = document.getElementById("activity-group"); g.replaceChildren(...acts.map((a) => { const b = document.createElement("button"); b.type = "button"; b.dataset.activity = a; b.textContent = `${label(a)} · ${state.data.routes.filter((x) => x.activityType === a).length}`; b.setAttribute("aria-pressed", "true"); return b; }));
-    if (!g.dataset.wired) { g.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; const a = b.dataset.activity; if (state.activities.has(a)) { if (state.activities.size === 1) return; state.activities.delete(a); } else state.activities.add(a); b.setAttribute("aria-pressed", String(state.activities.has(a))); renderAll(); }); g.dataset.wired = "1"; }
+    const g = document.getElementById("activity-group"); g.replaceChildren(...acts.map((a) => { const b = document.createElement("button"); b.type = "button"; b.dataset.activity = a; const r = countRoutes(a), ph = countPhotos(a); b.textContent = `${label(a)} · ${r || ""}${r && ph ? " · " : ""}${ph ? `📷 ${ph}` : ""}`.replace(/ · $/, ""); b.setAttribute("aria-pressed", "true"); return b; }));
+    if (!g.dataset.wired) { g.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; const a = b.dataset.activity; if (state.activities.has(a)) { if (state.activities.size === 1) return; state.activities.delete(a); } else state.activities.add(a); b.setAttribute("aria-pressed", String(state.activities.has(a))); renderAll(); renderPhotos(); }); g.dataset.wired = "1"; }
     const first = state.data.routes[0], last = state.data.routes[state.data.routes.length - 1];
     document.getElementById("span-label").textContent = first ? `${state.data.count} routes · ${first.startedAt.slice(0, 7)} – ${last.startedAt.slice(0, 7)} · ${Math.round(state.data.routes.reduce((n, x) => n + x.distanceMeters, 0) / 1000).toLocaleString()} km` : "no routes yet — run the export import with the workout-routes folder";
     state.view = "home"; state.cam = null; renderAll(); renderOverview(); renderPlaces(); renderPhotos();
@@ -430,8 +438,8 @@ function init() {
   const t = readStored(THEME_STORAGE); if (t) document.documentElement.setAttribute("data-theme", t);
   wireGroup("colour-group", "colour", (v) => { state.colour = v; renderHero(); });
   wireGroup("basemap-group", "basemap", (v) => { if (v !== "none" && !hasLeaflet()) { alert("The map library did not load; check the connection."); return; } state.basemap = v; writeStored("workout-tracker.basemap", v); state.cam = null; renderHero(); renderOverview(); });
-  wireGroup("range-group", "range", (v) => { state.range = v; state.cam = null; renderAll(); });
-  document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; document.getElementById("route-photos").hidden = true; renderAll(); });
+  wireGroup("range-group", "range", (v) => { state.range = v; state.cam = null; renderAll(); renderPhotos(); });
+  document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; document.getElementById("route-photos").hidden = true; renderAll(); renderPhotos(); });
   document.getElementById("toggle-table").addEventListener("click", (e) => { const p = document.getElementById("table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderTable(); });
   document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); if (state.data) { renderAll(); renderOverview(); renderPlaces(); } });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
