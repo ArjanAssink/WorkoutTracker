@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Routes</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
 :root {
   color-scheme: light;
@@ -36,6 +38,8 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; } .s
 .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 18px 18px 14px; margin-bottom: 16px; }
 .card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; } .card h2 { font-size: 14px; font-weight: 600; margin: 0; } .card .note { font-size: 12px; color: var(--text-muted); }
 .hero { position: relative; margin-top: 12px; } .hero canvas { display: block; width: 100%; border-radius: 10px; background: var(--canvas); cursor: grab; touch-action: none; } .hero canvas.dragging { cursor: grabbing; }
+.hero .lmap, .overview .lmap { height: 100%; border-radius: 10px; background: var(--canvas); } .hero .lmap { position: absolute; inset: 0; } .overview .lmap { position: absolute; inset: 0; }
+.leaflet-container { font: inherit; } .leaflet-control-attribution { font-size: 10px; background: rgba(0,0,0,0.5) !important; color: #bbb !important; } .leaflet-control-attribution a { color: #ddd !important; }
 .hero .tag { position: absolute; left: 12px; top: 10px; background: rgba(0,0,0,0.55); color: #ddd; padding: 4px 9px; border-radius: 6px; font-size: 12px; pointer-events: none; }
 .hero .hint { position: absolute; right: 12px; bottom: 10px; color: rgba(255,255,255,0.45); font-size: 11px; pointer-events: none; }
 .overview { position: relative; margin-top: 12px; } .overview canvas { display: block; width: 100%; border-radius: 10px; background: var(--canvas); cursor: pointer; }
@@ -80,6 +84,12 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
           <button type="button" data-colour="glow">One hue</button>
           <button type="button" data-colour="activity">By activity</button>
         </div></div>
+      <div class="filter-set"><span class="filter-label">Basemap</span>
+        <div class="group" id="basemap-group" role="group" aria-label="Basemap">
+          <button type="button" data-basemap="none">None</button>
+          <button type="button" data-basemap="osm">OSM</button>
+          <button type="button" data-basemap="dark">OSM dark</button>
+        </div></div>
       <div class="filter-set"><span class="filter-label">Activities</span><div class="group" id="activity-group" role="group" aria-label="Activities"></div></div>
       <div class="filter-set"><span class="filter-label">Since</span>
         <div class="group" id="range-group" role="group" aria-label="Time range">
@@ -91,7 +101,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
 
     <div class="card">
       <div class="card-head"><h2 id="hero-title">Home</h2><span class="note" id="hero-note"></span><span class="spacer"></span><button class="icon-btn" id="back-home" type="button" hidden>← Home</button></div>
-      <div class="hero"><canvas id="hero"></canvas><div class="tag" id="hero-tag"></div><div class="hint">drag to pan · wheel to zoom · hover a route</div></div>
+      <div class="hero"><canvas id="hero"></canvas><div id="hero-map" class="lmap" hidden></div><div class="tag" id="hero-tag"></div><div class="hint">drag to pan · wheel to zoom · hover a route</div></div>
       <div class="legend" id="legend"></div>
       <button class="link" id="toggle-table" type="button" style="margin-top:10px">Show data table</button>
       <div id="table" hidden style="margin-top:12px" class="scroll"></div>
@@ -99,7 +109,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
 
     <div class="card">
       <div class="card-head"><h2>Where</h2><span class="note" id="overview-note">home and every place away, bubbles sized by routes · click a bubble</span></div>
-      <div class="overview"><canvas id="overview"></canvas><div class="hint">Natural Earth outlines · hover a bubble</div></div>
+      <div class="overview"><canvas id="overview"></canvas><div id="overview-map" class="lmap" hidden></div><div class="hint" id="overview-hint">Natural Earth outlines · hover a bubble</div></div>
     </div>
 
     <div class="card">
@@ -119,7 +129,13 @@ const WORLD = [[180,-16.07,180,-16.56,179.36,-16.8,178.73,-17.01,178.6,-16.64,17
 <script type="module">
 "use strict";
 const KEY_STORAGE = "workout-tracker.apiKey", THEME_STORAGE = "workout-tracker.theme", PLACE_STORAGE = "workout-tracker.places";
-const state = { key: "", data: null, colour: "glow", activities: new Set(), range: "all", view: "home", place: null, hover: null, cam: null };
+const state = { key: "", data: null, colour: "glow", activities: new Set(), range: "all", view: "home", place: null, hover: null, cam: null, basemap: readStored("workout-tracker.basemap") || "none" };
+/* Tile sources: OpenStreetMap's own tiles, and CARTO's dark rendering of OSM data. Both need their attribution shown. */
+const BASEMAPS = {
+  osm: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors", maxZoom: 19, blend: "source-over", line: "#c2410c", alphaDense: 0.22, alphaSparse: 0.6 },
+  dark: { url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors © <a href=\"https://carto.com/attributions\">CARTO</a>", maxZoom: 19, blend: "lighter", line: null, alphaDense: 0.09, alphaSparse: 0.4 },
+};
+const hasLeaflet = () => typeof L !== "undefined";
 function readStored(n) { try { return localStorage.getItem(n) ?? ""; } catch { return ""; } }
 function writeStored(n, v) { try { v ? localStorage.setItem(n, v) : localStorage.removeItem(n); } catch {} }
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -133,7 +149,7 @@ const colourOf = (a) => css(SLOT[a] ?? "--cat-rest");
 function decode(encoded) { const out = []; let i = 0, lat = 0, lon = 0; const next = () => { let r = 0, s = 0, b; do { b = encoded.charCodeAt(i++) - 63; r |= (b & 0x1f) << s; s += 5; } while (b >= 0x20); return r & 1 ? ~(r >> 1) : r >> 1; }; while (i < encoded.length) { lat += next(); lon += next(); out.push([lon / 1e5, lat / 1e5]); } return out; }
 const merc = ([lon, lat]) => [lon * Math.PI / 180, Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2))];
 function prepare(data) {
-  for (const r of data.routes) { r.m = decode(r.polyline).map(merc); const xs = r.m.map((p) => p[0]), ys = r.m.map((p) => p[1]); r.bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
+  for (const r of data.routes) { r.ll = decode(r.polyline).map(([lon, lat]) => [lat, lon]); r.m = r.ll.map(([lat, lon]) => merc([lon, lat])); const xs = r.m.map((p) => p[0]), ys = r.m.map((p) => p[1]); r.bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
 }
 const bboxOf = (routes) => routes.reduce((b, r) => [Math.min(b[0], r.bb[0]), Math.min(b[1], r.bb[1]), Math.max(b[2], r.bb[2]), Math.max(b[3], r.bb[3])], [Infinity, Infinity, -Infinity, -Infinity]);
 /* A tight extent for the home map: drop the far 2% of route centres so one ride out of town does not shrink the city. */
@@ -156,6 +172,9 @@ const hero = document.getElementById("hero"); const hctx = hero.getContext("2d")
 function camFor(routes) { const bb = state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes)); const W = hero.clientWidth, H = hero.clientHeight; const s = Math.min(W / (bb[2] - bb[0]), H / (bb[3] - bb[1])); return { s, x: (W - (bb[2] - bb[0]) * s) / 2 - bb[0] * s, y: (H - (bb[3] - bb[1]) * s) / 2 + bb[3] * s }; }
 const project = (p) => [state.cam.x + p[0] * state.cam.s, state.cam.y - p[1] * state.cam.s];
 function renderHero() {
+  if (state.basemap !== "none" && hasLeaflet()) { showLeafletHero(); return; }
+  hideLeafletHero();
+  if (state.cam === "leaflet") state.cam = null;
   const routes = visible(); const W = hero.clientWidth || 1000, H = Math.round(Math.min(640, Math.max(360, W * 0.6)));
   const dpr = Math.min(2, devicePixelRatio || 1); hero.width = W * dpr; hero.height = H * dpr; hero.style.height = `${H}px`; hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   hctx.fillStyle = css("--canvas"); hctx.fillRect(0, 0, W, H);
@@ -174,10 +193,11 @@ function renderHero() {
   document.getElementById("legend").replaceChildren(...(byAct ? [...new Set(routes.map((r) => r.activityType))].map((a) => { const s = document.createElement("span"); const i = document.createElement("i"); i.style.background = colourOf(a); const t = document.createElement("span"); t.textContent = `${label(a)} · ${routes.filter((r) => r.activityType === a).length}`; s.append(i, t); return s; }) : []));
 }
 /* Nearest route to the pointer, within 8 px, measured against segment midpoints — cheap and good enough at this density. */
-function pick(x, y) {
+function pick(x, y) { return pickWith(x, y, project, false); }
+function pickWith(x, y, proj, latlng) {
   let best = null, bd = 64;
-  for (const r of visible()) { if (project([r.bb[0], r.bb[3]])[0] - 8 > x || project([r.bb[2], r.bb[1]])[0] + 8 < x) continue;
-    for (let i = 1; i < r.m.length; i++) { const [ax, ay] = project(r.m[i - 1]), [bx, by] = project(r.m[i]); const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); const ex = x - (ax + t * dx), ey = y - (ay + t * dy); const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = r; } } }
+  for (const r of visible()) { const pts = latlng ? r.ll : r.m; const a0 = proj(latlng ? [r.bounds.maxLat, r.bounds.minLon] : [r.bb[0], r.bb[3]]), a1 = proj(latlng ? [r.bounds.minLat, r.bounds.maxLon] : [r.bb[2], r.bb[1]]); if (a0[0] - 8 > x || a1[0] + 8 < x || a0[1] - 8 > y || a1[1] + 8 < y) continue;
+    for (let i = 1; i < pts.length; i++) { const [ax, ay] = proj(pts[i - 1]), [bx, by] = proj(pts[i]); const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); const ex = x - (ax + t * dx), ey = y - (ay + t * dy); const d = ex * ex + ey * ey; if (d < bd) { bd = d; best = r; } } }
   return best;
 }
 const tip = document.getElementById("tip");
@@ -195,11 +215,73 @@ hero.addEventListener("pointerup", () => { drag = null; hero.classList.remove("d
 hero.addEventListener("pointerleave", () => { drag = null; hero.classList.remove("dragging"); if (state.hover) { state.hover = null; renderHero(); } tip.dataset.show = "0"; });
 hero.addEventListener("wheel", (e) => { e.preventDefault(); const rect = hero.getBoundingClientRect(); const x = e.clientX - rect.left, y = e.clientY - rect.top; const f = Math.exp(-e.deltaY * 0.0015); state.cam = { s: state.cam.s * f, x: x - (x - state.cam.x) * f, y: y - (y - state.cam.y) * f }; renderHero(); }, { passive: false });
 
+/* ---- the same drawing over tiles: a Leaflet map with one canvas overlay, redrawn when the view settles ---- */
+let lmap = null, lcanvas = null, ltiles = null, lhover = null;
+function ensureLeaflet() {
+  if (!hasLeaflet()) return false;
+  if (lmap) return true;
+  const el = document.getElementById("hero-map");
+  lmap = L.map(el, { zoomControl: true, attributionControl: true, preferCanvas: true, zoomSnap: 0.25 });
+  const Routes = L.Layer.extend({
+    onAdd(map) { lcanvas = L.DomUtil.create("canvas", "leaflet-zoom-hide"); lcanvas.style.pointerEvents = "none"; this.getPane("overlayPane").appendChild(lcanvas); map.on("moveend zoomend viewreset resize", drawLeaflet); drawLeaflet(); },
+    onRemove(map) { map.off("moveend zoomend viewreset resize", drawLeaflet); lcanvas.remove(); },
+  });
+  new Routes().addTo(lmap);
+  lmap.on("mousemove", (e) => { const r = pickWith(e.containerPoint.x, e.containerPoint.y, (p) => { const c = lmap.latLngToContainerPoint(p); return [c.x, c.y]; }, true); if (r !== lhover) { lhover = r; drawLeaflet(); } if (r) showTip(e.originalEvent, r); else tip.dataset.show = "0"; });
+  lmap.on("mouseout", () => { if (lhover) { lhover = null; drawLeaflet(); } tip.dataset.show = "0"; });
+  return true;
+}
+function drawLeaflet() {
+  if (!lmap || !lcanvas) return;
+  const size = lmap.getSize(); const dpr = Math.min(2, devicePixelRatio || 1);
+  L.DomUtil.setPosition(lcanvas, lmap.containerPointToLayerPoint([0, 0]));
+  lcanvas.width = size.x * dpr; lcanvas.height = size.y * dpr; lcanvas.style.width = `${size.x}px`; lcanvas.style.height = `${size.y}px`;
+  const ctx = lcanvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, size.x, size.y);
+  const routes = visible(); const bm = BASEMAPS[state.basemap] ?? BASEMAPS.dark; const byAct = state.colour === "activity"; const dense = routes.length > 300;
+  document.getElementById("hero-tag").textContent = routes.length ? `${routes.length} routes · ${Math.round(routes.reduce((n, r) => n + r.distanceMeters, 0) / 1000).toLocaleString()} km` : "no routes match";
+  ctx.globalCompositeOperation = bm.blend; ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.globalAlpha = dense ? bm.alphaDense : bm.alphaSparse;
+  const bounds = lmap.getBounds().pad(0.1);
+  for (const r of routes) {
+    if (r === lhover) continue;
+    if (r.bounds.maxLat < bounds.getSouth() || r.bounds.minLat > bounds.getNorth() || r.bounds.maxLon < bounds.getWest() || r.bounds.minLon > bounds.getEast()) continue;
+    ctx.strokeStyle = byAct ? colourOf(r.activityType) : (bm.line ?? css("--glow")); ctx.beginPath();
+    r.ll.forEach((p, i) => { const c = lmap.latLngToContainerPoint(p); if (i) ctx.lineTo(c.x, c.y); else ctx.moveTo(c.x, c.y); }); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+  if (lhover) { ctx.strokeStyle = bm.line ? "#111" : "#fff"; ctx.lineWidth = 3; ctx.beginPath(); lhover.ll.forEach((p, i) => { const c = lmap.latLngToContainerPoint(p); if (i) ctx.lineTo(c.x, c.y); else ctx.moveTo(c.x, c.y); }); ctx.stroke(); }
+}
+function showLeafletHero() {
+  const routes = visible(); const el = document.getElementById("hero-map"); el.hidden = false; hero.style.visibility = "hidden";
+  const H = Math.round(Math.min(640, Math.max(360, (hero.clientWidth || 1000) * 0.6))); hero.style.height = `${H}px`; el.style.height = `${H}px`;
+  ensureLeaflet(); lmap.invalidateSize();
+  const bm = BASEMAPS[state.basemap]; if (!ltiles || ltiles._bm !== state.basemap) { if (ltiles) ltiles.remove(); ltiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom }); ltiles._bm = state.basemap; ltiles.addTo(lmap); }
+  if (!state.cam && routes.length) { const bb = state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes)); const toLL = (c) => [Math.atan(Math.sinh(c[1])) * 180 / Math.PI, c[0] * 180 / Math.PI]; lmap.fitBounds([toLL([bb[0], bb[1]]), toLL([bb[2], bb[3]])], { animate: false }); state.cam = "leaflet"; }
+  drawLeaflet();
+}
+function hideLeafletHero() { document.getElementById("hero-map").hidden = true; hero.style.visibility = ""; hero.style.height = ""; }
+
 /* ---- the overview: countries as a dark ground, home as a glow, each place a bubble ---- */
 const ov = document.getElementById("overview"); const octx = ov.getContext("2d");
 let ovHits = [];
 const WORLD_M = WORLD.map((ring) => { const out = []; for (let i = 0; i < ring.length; i += 2) { const lat = Math.max(-85, Math.min(85, ring[i + 1])); out.push(merc([ring[i], lat])); } return out; });
+let omap = null, otiles = null, omarkers = null;
+function renderOverviewLeaflet() {
+  const { home, places, routes } = state.data; const el = document.getElementById("overview-map"); el.hidden = false; ov.style.visibility = "hidden";
+  const H = Math.round(Math.min(560, Math.max(320, (ov.clientWidth || 1000) * 0.5))); ov.style.height = `${H}px`; el.style.height = `${H}px`;
+  document.getElementById("overview-hint").textContent = "hover a bubble · click to open";
+  if (!omap) { omap = L.map(el, { zoomControl: true, attributionControl: true, zoomSnap: 0.25 }); omap.on("click", () => {}); }
+  omap.invalidateSize();
+  const bm = BASEMAPS[state.basemap]; if (!otiles || otiles._bm !== state.basemap) { if (otiles) otiles.remove(); otiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom }); otiles._bm = state.basemap; otiles.addTo(omap); }
+  if (omarkers) omarkers.remove(); omarkers = L.layerGroup().addTo(omap);
+  const homeRoutes = routes.filter((r) => r.place === null).length;
+  for (const pl of places) { const m = L.circleMarker([pl.centre.lat, pl.centre.lon], { radius: 4 + Math.sqrt(pl.routes) * 2, color: "#fff", weight: 1.5, fillColor: css("--glow"), fillOpacity: 0.85 }).addTo(omarkers);
+    m.bindTooltip(`${placeName(pl) ?? `${pl.centre.lat.toFixed(2)}°, ${pl.centre.lon.toFixed(2)}°`} · ${pl.routes} route${pl.routes === 1 ? "" : "s"}`); m.on("click", () => { state.view = "place"; state.place = pl.index; state.cam = null; state.hover = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); }); }
+  const hm = L.circleMarker([home.lat, home.lon], { radius: 6 + Math.sqrt(homeRoutes) * 0.5, color: css("--glow"), weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(omarkers); hm.bindTooltip(`Home · ${homeRoutes} routes`); hm.on("click", () => { state.view = "home"; state.place = null; state.cam = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); });
+  const pts = [[home.lat, home.lon], ...places.map((p) => [p.centre.lat, p.centre.lon])]; omap.fitBounds(pts, { padding: [30, 30], animate: false, maxZoom: 8 });
+}
 function renderOverview() {
+  if (state.basemap !== "none" && hasLeaflet()) { renderOverviewLeaflet(); return; }
+  document.getElementById("overview-map").hidden = true; ov.style.visibility = ""; ov.style.height = ""; document.getElementById("overview-hint").textContent = "Natural Earth outlines · hover a bubble";
   const { home, places, routes } = state.data; if (!home) return;
   const pts = [merc([home.lon, home.lat]), ...places.map((p) => merc([p.centre.lon, p.centre.lat]))];
   const W = ov.clientWidth || 1000, H = Math.round(Math.min(560, Math.max(320, W * 0.5))); const dpr = Math.min(2, devicePixelRatio || 1);
@@ -313,6 +395,7 @@ function wireGroup(id, attr, onPick) {
 function init() {
   const t = readStored(THEME_STORAGE); if (t) document.documentElement.setAttribute("data-theme", t);
   wireGroup("colour-group", "colour", (v) => { state.colour = v; renderHero(); });
+  wireGroup("basemap-group", "basemap", (v) => { if (v !== "none" && !hasLeaflet()) { alert("The map library did not load; check the connection."); return; } state.basemap = v; writeStored("workout-tracker.basemap", v); state.cam = null; renderHero(); renderOverview(); });
   wireGroup("range-group", "range", (v) => { state.range = v; state.cam = null; renderAll(); });
   document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; renderAll(); });
   document.getElementById("toggle-table").addEventListener("click", (e) => { const p = document.getElementById("table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderTable(); });
