@@ -11,7 +11,7 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   names — resource group, Function App (Flex Consumption, westeurope), storage account —
   are **not in the repo**: they live in the gitignored `.env` as `WORKOUTS_URL`,
   `AZURE_RESOURCE_GROUP`, `AZURE_FUNCTION_APP`, `AZURE_STORAGE_ACCOUNT` (template:
-  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `recovery`. The signed-in `az` user owns
+  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `recovery`, `routes`. The signed-in `az` user owns
   the subscription.
 - **Data loaded**: ~3,180 workouts (Feb 2018 → now, Apple Health export + Health Auto
   Export + manual), 4,229 days of body weight (Feb 2012 →), 96 lift PRs + 40 rep maxes +
@@ -86,14 +86,15 @@ src/domain/     pure: activityType (slugs, MET, PERSONAL_OVERRIDES, relabels), w
                 effort, lead-in), weeklySummary (Telegram text), calendar (ICS),
                 bodyWeight, strength (lifts, 1RM estimators, DOTS, block analysis),
                 milestones (instant announcements + the Thursday check-in text),
-                recovery (nights from sleep segments, daily signals, baselines, weekly join)
+                recovery (nights from sleep segments, daily signals, baselines, weekly join),
+                routes (track simplification, polyline codec, home/away split by start)
 src/ingest/     shortcutPayload, healthExport (streaming SAX; joins loose HR samples; body
                 mass hook), healthAutoExport (batch + weight metrics), units, xlsx (no-lib)
 src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|YYYY),
                 liftRepository (PK me|pr, me|repmax, me|tm|<program>, me|set),
                 milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
-public/         index.html (dashboard), strength.html, recovery.html — standalone, no build, hand-rolled SVG
+public/         index.html (dashboard), strength.html, recovery.html, map.html — standalone, no build
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
 ```
 
@@ -279,6 +280,12 @@ malformed envelope still returns 400. Keep that asymmetry.
 - **`src/ingest/xlsx.ts` reads .xlsx without a library.** Zip central directory by hand,
   `inflateRawSync`, `sax` for the XML. Error cells (`#N/A`) come back null; date-styled
   numbers come back as `YYYY-MM-DD`.
+- **Routes are keyed by workout id and start at the parser.** `<WorkoutRoute><FileReference>`
+  is captured into `WorkoutInput.routeFile`, which `buildWorkout` strips — it is for the
+  importer, never the row. `sync.sh` must unzip `*workout-routes/*` or the import silently
+  stores no routes. Home is `homeOf` (densest 1 km bin of starts); the split is by *start*
+  point, not centroid, on purpose. The page geocodes place names client-side via Nominatim
+  (one request a second, cached in localStorage) — the only external call any page makes.
 - **Recovery rows merge, never replace.** `RecoveryRepository.upsertMany` uses Table
   Storage's Merge mode because the two sources carry different fields on different days;
   a Replace would let a resting-heart-rate-only batch erase the night. A night is keyed by

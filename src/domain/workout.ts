@@ -45,7 +45,10 @@ export interface Workout {
 }
 
 /** A workout before effort scoring — what the parsers hand to {@link buildWorkout}. */
-export type WorkoutInput = Omit<Workout, "id" | "effort" | "effortModel" | "recordedAt" | "maxHeartRateReference">;
+export type WorkoutInput = Omit<Workout, "id" | "effort" | "effortModel" | "recordedAt" | "maxHeartRateReference"> & {
+  /** The export's GPX file for this workout (`workout-routes/route_….gpx`), when it has one. Never stored on the workout row. */
+  routeFile?: string;
+};
 
 /**
  * Identity is derived rather than assigned so that re-posting the same workout — a Shortcut

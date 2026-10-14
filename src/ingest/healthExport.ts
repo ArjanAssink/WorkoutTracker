@@ -92,6 +92,7 @@ interface PendingWorkout {
   basalEnergyKcal: number | undefined;
   distanceMeters: number | undefined;
   averageHeartRate: number | undefined;
+  routeFile: string | undefined;
   minHeartRate: number | undefined;
   maxHeartRate: number | undefined;
 }
@@ -99,6 +100,7 @@ interface PendingWorkout {
 function newPending(attributes: Record<string, string>): PendingWorkout {
   return {
     attributes,
+    routeFile: undefined,
     activeEnergyKcal: undefined,
     basalEnergyKcal: undefined,
     distanceMeters: undefined,
@@ -206,6 +208,8 @@ export async function* parseHealthExport(
     }
     if (!pending) return;
     if (tag.name === "WorkoutStatistics") applyStatistic(pending, attributes, stats);
+    // <WorkoutRoute><FileReference path="/workout-routes/route_2024-04-09_7.47pm.gpx"/></WorkoutRoute>
+    if (tag.name === "FileReference" && attributes["path"]) pending.routeFile = attributes["path"].replace(/^\/?workout-routes\//, "");
   };
 
   parser.onclosetag = (name) => {
@@ -328,6 +332,7 @@ function toWorkoutInput(pending: PendingWorkout, heartRate?: HeartRateIndex): Wo
     endedAt: (endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000)).toISOString(),
     durationSeconds: Math.round(durationSeconds),
     source: "health-export",
+    ...present("routeFile", pending.routeFile),
     ...present("distanceMeters", distance),
     ...present("activeEnergyKcal", activeEnergy),
     ...present("totalEnergyKcal", totalEnergy),

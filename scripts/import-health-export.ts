@@ -25,6 +25,11 @@ import { BodyWeightRepository } from "../src/storage/bodyWeightRepository.js";
 import { dailyWeights, type WeightReading } from "../src/domain/bodyWeight.js";
 import { RecoveryRepository } from "../src/storage/recoveryRepository.js";
 import { dailyRecovery, type RecoverySample } from "../src/domain/recovery.js";
+import { RouteRepository } from "../src/storage/routeRepository.js";
+import { parseGpxTrack } from "../src/ingest/gpx.js";
+import { buildRouteRecord, type PrivacyZone, type RouteRecord } from "../src/domain/routes.js";
+import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
 const BATCH_SIZE = 100;
 
@@ -34,16 +39,22 @@ async function main(): Promise<void> {
     options: {
       "dry-run": { type: "boolean", default: false },
       since: { type: "string" },
+      routes: { type: "string" },
+      privacy: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
 
   const file = positionals[0];
   if (values.help || !file) {
-    console.log("Usage: npm run import -- <path to export.xml> [--since YYYY-MM-DD] [--dry-run]");
+    console.log("Usage: npm run import -- <path to export.xml> [--since YYYY-MM-DD] [--routes <dir of .gpx>] [--privacy lat,lon,metres] [--dry-run]");
     process.exit(values.help ? 0 : 1);
   }
 
+  // GPS tracks: the export's workout-routes folder next to export.xml unless told otherwise.
+  const routesDir = values.routes ?? join(dirname(file), "workout-routes");
+  const haveRoutes = existsSync(routesDir);
+  const privacy = parsePrivacy(values.privacy ?? process.env["ROUTE_PRIVACY_ZONE"]);
   const since = values.since ? new Date(`${values.since}T00:00:00Z`) : undefined;
   if (since && Number.isNaN(since.getTime())) {
     throw new Error(`--since is not a valid date: ${values.since}`);
@@ -59,6 +70,10 @@ async function main(): Promise<void> {
   await repository?.ensureTable();
 
   const stats: ParseStats = { workoutsSeen: 0, workoutsParsed: 0, skipped: [] };
+  const routeRepo = target && haveRoutes ? RouteRepository.fromConnectionString(target.storageConnectionString, target.userId) : undefined;
+  await routeRepo?.ensureTable();
+  let routeBatch: RouteRecord[] = [];
+  let routesSeen = 0, routesMissing = 0, routesWritten = 0;
   let batch: Workout[] = [];
   let written = 0;
   let filtered = 0;
@@ -103,8 +118,19 @@ async function main(): Promise<void> {
       throw error;
     }
     batch.push(workout);
+    if (haveRoutes && input.routeFile) {
+      try {
+        const route = buildRouteRecord(workout, parseGpxTrack(readFileSync(join(routesDir, input.routeFile), "utf8")), "health-export", new Date(), privacy);
+        if (route) routeBatch.push(route);
+        routesSeen++;
+      } catch {
+        routesMissing++;
+      }
+      if (routeBatch.length >= BATCH_SIZE) { routesWritten += await flushRoutes(routeRepo, routeBatch); routeBatch = []; }
+    }
     if (batch.length >= BATCH_SIZE) {
       written += await flush(repository, batch);
+  routesWritten += await flushRoutes(routeRepo, routeBatch);
       batch = [];
       process.stdout.write(`\r  imported ${written}...`);
     }
@@ -130,6 +156,11 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write("\r");
+  if (haveRoutes) {
+    console.log(`Routes             : ${routesSeen} tracks read${routesMissing ? `, ${routesMissing} missing` : ""}${values["dry-run"] ? " (would write)" : ` (${routesWritten} written)`}${privacy ? " · privacy zone applied" : ""}`);
+  } else {
+    console.log(`Routes             : no workout-routes folder at ${routesDir} (pass --routes)`);
+  }
   if (recoverySamples.length) {
     const nights = recoveryDays.filter((d) => d.sleepAsleepSeconds !== undefined).length;
     console.log(`Recovery records   : ${recoverySamples.length} → ${recoveryDays.length} days, ${nights} nights${values["dry-run"] ? " (would write)" : ` (${recoveryWritten} written)`}`);
@@ -164,3 +195,17 @@ main().catch((error: unknown) => {
   console.error(`\nImport failed: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });
+
+async function flushRoutes(repository: RouteRepository | undefined, batch: RouteRecord[]): Promise<number> {
+  if (batch.length === 0) return 0;
+  if (!repository) return batch.length;
+  return repository.upsertMany(batch);
+}
+
+/** `lat,lon,metres` → a zone whose points are dropped from every track. */
+function parsePrivacy(raw: string | undefined): PrivacyZone | undefined {
+  if (!raw) return undefined;
+  const [lat, lon, m] = raw.split(",").map((x) => Number(x.trim()));
+  if (![lat, lon, m].every(Number.isFinite) || m! <= 0) throw new Error(`ROUTE_PRIVACY_ZONE must be lat,lon,metres — got ${raw}`);
+  return { lat: lat!, lon: lon!, radiusMeters: m! };
+}

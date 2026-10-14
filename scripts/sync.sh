@@ -54,8 +54,8 @@ trap 'rm -rf "$WORK"' EXIT
 if [ "${ARCHIVE##*.}" = "zip" ]; then
   # Only export.xml. The zip also carries export_cda.xml — a clinical-document rendering
   # of the same data, often over a gigabyte — which nothing here reads.
-  echo "Extracting export.xml..."
-  unzip -q "$ARCHIVE" '*export.xml' -d "$WORK"
+  echo "Extracting export.xml and the workout routes..."
+  unzip -q "$ARCHIVE" '*export.xml' '*workout-routes/*' -d "$WORK"
   XML=$(find "$WORK" -name export.xml -maxdepth 3 | head -1)
 else
   XML="$ARCHIVE"

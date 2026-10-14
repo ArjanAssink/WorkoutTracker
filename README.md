@@ -36,6 +36,8 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`/`POST` | `/api/notify/checkin` | Preview the Thursday check-in, or send it now. |
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
 | `GET`  | `/api/recovery`  | The Recovery page: sleep, resting HR and HRV against training load. |
+| `GET`  | `/api/map`       | The Routes page: every GPS track, home as the hero and each place away as a card. |
+| `GET`  | `/api/routes/data` | Every stored route as an encoded polyline, with home and the away places worked out. |
 | `GET`  | `/api/recovery/data` | What it reads: one row per day with 28-day baselines, the weekly join with effort, the 90-day typical night. |
 | `GET`  | `/api/lifts`     | Everything the Strength page reads, as JSON. |
 | `GET`  | `/api/calendar.ics` | iCalendar feed to subscribe to. Token in the query string. |
@@ -421,6 +423,28 @@ recover less. "Recovery now" is the latest rated day.
 The weekly table's note gives the same-week correlation between effort and resting heart
 rate, and between effort and sleep. With a year of weeks it is a real number; under about
 0.3 either way it is noise, and it says so.
+
+## Routes
+
+Walks, rides, runs and hikes carry a GPS track; the export ships them as one GPX file per
+workout in `workout-routes/`, referenced from each `<Workout>`. `npm run sync` unpacks the
+folder beside `export.xml` and the importer reads it (`--routes <dir>` to point elsewhere).
+Each track is simplified (Douglas–Peucker, 12 m) and stored as a Google-encoded polyline on
+a row in the `routes` table — a few kilobytes per workout, so three years is one response.
+
+The page (`/api/map`, linked from the dashboard) draws everything on a canvas with additive
+blending, so brightness is how often a street has been walked. **Home** is where most
+routes *start*; a route is a home route if it starts within 15 km of that point — a ride
+from the front door that ends sixty kilometres away is still a home ride. Everything else
+is **away**, grouped into places (starts within 40 km of each other), each a card; click
+one and it becomes the hero. Colour is one warm hue by default or the activity's fixed
+colour; activities toggle; the range cuts by date; hover lights a route and names its day.
+Place names come from Nominatim one request a second, remembered in the browser; until
+then a card shows its coordinates.
+
+**Privacy zone.** `ROUTE_PRIVACY_ZONE=lat,lon,metres` in `.env` (or `--privacy` on the
+import) drops every point within that radius before anything is stored, so the glow starts
+a street away from the front door. Off by default; the page is behind the API key either way.
 
 ## Rescoring history
 
