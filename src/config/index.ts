@@ -16,6 +16,10 @@ export interface AppConfig extends TableTarget {
   goals: GoalSpec;
   /** Telegram delivery for the weekly summary. Both unset disables it. */
   telegram: { botToken: string; chatId: string } | undefined;
+  /** Strava API application; tokens themselves live in the settings table once connected. */
+  strava: { clientId: string; clientSecret: string } | undefined;
+  /** Where this app is reachable, for OAuth callbacks. */
+  publicUrl: string | undefined;
 }
 
 export class ConfigError extends Error {
@@ -93,6 +97,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       env["TELEGRAM_BOT_TOKEN"] && env["TELEGRAM_CHAT_ID"]
         ? { botToken: env["TELEGRAM_BOT_TOKEN"], chatId: env["TELEGRAM_CHAT_ID"] }
         : undefined,
+    strava:
+      env["STRAVA_CLIENT_ID"] && env["STRAVA_CLIENT_SECRET"]
+        ? { clientId: env["STRAVA_CLIENT_ID"], clientSecret: env["STRAVA_CLIENT_SECRET"] }
+        : undefined,
+    publicUrl: env["PUBLIC_URL"] || undefined,
   };
 }
 

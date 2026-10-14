@@ -7,6 +7,8 @@ import { LiftRepository } from "../storage/liftRepository.js";
 import { MilestoneRepository } from "../storage/milestoneRepository.js";
 import { RecoveryRepository } from "../storage/recoveryRepository.js";
 import { RouteRepository } from "../storage/routeRepository.js";
+import { SettingsRepository } from "../storage/settingsRepository.js";
+import { StravaRepository } from "../storage/stravaRepository.js";
 
 /**
  * One repository per process. Azure Functions reuses a warm worker across invocations, so
@@ -106,4 +108,28 @@ export function getRouteRepository(): Promise<RouteRepository> {
     return repository;
   })();
   return routePromise;
+}
+
+let settingsPromise: Promise<SettingsRepository> | undefined;
+
+export function getSettingsRepository(): Promise<SettingsRepository> {
+  settingsPromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = SettingsRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return settingsPromise;
+}
+
+let stravaPromise: Promise<StravaRepository> | undefined;
+
+export function getStravaRepository(): Promise<StravaRepository> {
+  stravaPromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = StravaRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return stravaPromise;
 }

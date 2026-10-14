@@ -37,6 +37,9 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
 | `GET`  | `/api/recovery`  | The Recovery page: sleep, resting HR and HRV against training load. |
 | `GET`  | `/api/map`       | The Routes page: every GPS track, home as the hero and each place away as a card. |
+| `GET`  | `/api/strava/connect` | Start the Strava OAuth flow (`?key=` accepted, it opens in a browser). |
+| `GET`/`POST` | `/api/strava/status`, `/api/strava/sync` | Connection state; pull activities and photos since the last sync. |
+| `GET`  | `/api/photos`    | Photos from Strava, newest first, each linked to its workout. |
 | `GET`  | `/api/routes/data` | Every stored route as an encoded polyline, with home and the away places worked out. |
 | `GET`  | `/api/recovery/data` | What it reads: one row per day with 28-day baselines, the weekly join with effort, the 90-day typical night. |
 | `GET`  | `/api/lifts`     | Everything the Strength page reads, as JSON. |
@@ -445,6 +448,45 @@ then a card shows its coordinates.
 **Privacy zone.** `ROUTE_PRIVACY_ZONE=lat,lon,metres` in `.env` (or `--privacy` on the
 import) drops every point within that radius before anything is stored, so the glow starts
 a street away from the front door. Off by default; the page is behind the API key either way.
+
+## Strava
+
+Strava adds what Apple Health lacks: the name you gave a session, its photos, kudos, its
+own "relative effort", the gear, and a polyline for anything recorded on the phone — which
+keeps the Routes page current between exports. Nothing is created on the workout side;
+Strava only decorates, matched to the Apple Health workout that starts within five minutes.
+
+Setting it up, once:
+
+1. At [strava.com/settings/api](https://www.strava.com/settings/api) create an application.
+   Any name; **Authorization Callback Domain** = your app's host (e.g. `workouts.example.com`).
+   Note the Client ID and Client Secret.
+2. Store them, and the public URL the callback should use:
+
+```bash
+az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNCTION_APP" \
+  --settings STRAVA_CLIENT_ID="<id>" STRAVA_CLIENT_SECRET="<secret>" PUBLIC_URL="$WORKOUTS_URL"
+```
+
+3. Open `$WORKOUTS_URL/api/strava/connect?key=<INGEST_API_KEY>` in a browser and approve.
+   The tokens go to the `settings` table (Strava rotates the refresh token, so they cannot
+   live in an app setting). Then:
+
+```bash
+curl -s -X POST "$WORKOUTS_URL/api/strava/sync?since=2022-01-01" -H "x-api-key: $KEY"   # the backfill
+curl -s "$WORKOUTS_URL/api/strava/status" -H "x-api-key: $KEY"
+```
+
+A timer syncs daily at 03:20 UTC from the stored cursor. Strava allows 200 requests per
+15 minutes; a sync stops cleanly at the limit and continues where it left off on the next
+run, so a large backfill may take a few runs. Photos are stored as their Strava URLs (the
+largest size offered) — the images stay on Strava's CDN.
+
+What else the API offers, not wired yet: per-second **streams** (heart rate, pace,
+altitude, cadence, power) per activity; **best efforts** and **segment efforts** with
+PRs; **laps** and **splits**; **gear** with mileage (shoes, bikes); athlete **zones** and
+**FTP**; **starred segments**; **planned routes**; and **webhooks** for a push on every new
+activity instead of a daily poll.
 
 ## Rescoring history
 

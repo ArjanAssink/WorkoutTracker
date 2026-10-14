@@ -32,7 +32,9 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
 Nothing secret is in the repo, ever. All of it is in the Function App's settings:
 `INGEST_API_KEY` (every data endpoint, header `x-api-key`), `CALENDAR_TOKEN` (iCal, query
 string, read-only), `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`, `WEEKLY_GOALS`,
-`GOOD_WEEK_SESSIONS`, `ATHLETE_RESTING_HR`, `ATHLETE_MAX_HR` (fallback only). Read
+`GOOD_WEEK_SESSIONS`, `ATHLETE_RESTING_HR`, `ATHLETE_MAX_HR` (fallback only),
+`STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` / `PUBLIC_URL` (OAuth tokens themselves are
+in the `settings` table, key `strava.tokens`, because Strava rotates them). Read
 one back with:
 
 ```bash
@@ -138,6 +140,11 @@ against every other, and relabelling a slug changes identity.
    names moved to `.env`, the person's numbers taken out of the docs. Keep it that way:
    no domain, resource names, heart rates, bodyweights or lift numbers in commits or docs.
 4. CI via OIDC (needs the user to run `scripts/setup-github-oidc.sh`).
+5. **Strava** (`src/strava/client.ts`, `functions/strava.ts`, `domain/strava.ts`): code is
+   deployed; the connection needs the user's API application (client id/secret) and one
+   browser approval — see README "Strava". Then `POST /api/strava/sync?since=2022-01-01`
+   repeatedly until `rateLimited` is false. Photos show on the Routes page; polylines fill
+   routes between exports. Streams/segments/gear are documented as next steps, not built.
 
 ## Working agreements
 

@@ -50,6 +50,10 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; } .s
 .place:hover { background: var(--hover-wash); } .place canvas { display: block; width: 100%; border-radius: 4px; background: var(--canvas); }
 .place b { display: block; font-size: 12px; color: var(--text-primary); margin-top: 6px; font-weight: 600; } .place .l { font-size: 11px; color: var(--text-muted); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12px; } .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); } .legend i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+.photo { display: block; position: relative; border-radius: 8px; overflow: hidden; background: var(--canvas); aspect-ratio: 4 / 3; text-decoration: none; color: inherit; }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; } .photo .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 6px; font-size: 11px; color: #eee; background: linear-gradient(transparent, rgba(0,0,0,0.65)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strip { display: flex; gap: 8px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; } .strip .photo { flex: 0 0 180px; }
 .stale { opacity: 0.45; transition: opacity 120ms ease; }
 .tip { position: fixed; z-index: 10; pointer-events: none; opacity: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.13); transition: opacity 90ms ease; max-width: 260px; }
 .tip[data-show="1"] { opacity: 1; } .tip .tip-head { color: var(--text-muted); margin-bottom: 4px; } .tip-row { display: flex; gap: 7px; white-space: nowrap; } .tip-row .v { font-weight: 600; color: var(--text-primary); } .tip-row .k { color: var(--text-secondary); }
@@ -104,6 +108,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
       <div class="card-head"><h2 id="hero-title">Home</h2><span class="note" id="hero-note"></span><span class="spacer"></span><button class="icon-btn" id="back-home" type="button" hidden>← Home</button></div>
       <div class="hero"><canvas id="hero"></canvas><div id="hero-map" class="lmap" hidden></div><div class="tag" id="hero-tag"></div><div class="hint">drag to pan · wheel to zoom · hover a route</div></div>
       <div class="legend" id="legend"></div>
+      <div class="strip" id="route-photos" hidden></div>
       <button class="link" id="toggle-table" type="button" style="margin-top:10px">Show data table</button>
       <div id="table" hidden style="margin-top:12px" class="scroll"></div>
     </div>
@@ -118,6 +123,11 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
       <div class="places" id="places"></div>
     </div>
 
+    <div class="card" id="photos-card" hidden>
+      <div class="card-head"><h2>Photos</h2><span class="note" id="photos-note"></span></div>
+      <div class="photos" id="photos"></div>
+    </div>
+
     <div id="error" class="err" hidden></div>
   </div>
 </div>
@@ -130,7 +140,7 @@ const WORLD = [[180,-16.07,180,-16.56,179.36,-16.8,178.73,-17.01,178.6,-16.64,17
 <script type="module">
 "use strict";
 const KEY_STORAGE = "workout-tracker.apiKey", THEME_STORAGE = "workout-tracker.theme", PLACE_STORAGE = "workout-tracker.places";
-const state = { key: "", data: null, colour: "glow", activities: new Set(), range: "all", view: "home", place: null, hover: null, cam: null, basemap: readStored("workout-tracker.basemap") || "none" };
+const state = { key: "", data: null, photos: [], photosByWorkout: new Map(), colour: "glow", activities: new Set(), range: "all", view: "home", place: null, hover: null, cam: null, basemap: readStored("workout-tracker.basemap") || "none" };
 /* Tile sources: OpenStreetMap's own tiles, and CARTO's dark rendering of OSM data. Both need their attribution shown. */
 const BASEMAPS = {
   osm: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors", maxZoom: 19, blend: "source-over", line: "#c2410c", alphaDense: 0.22, alphaSparse: 0.6 },
@@ -204,7 +214,8 @@ function pickWith(x, y, proj, latlng) {
 }
 const tip = document.getElementById("tip");
 function showTip(e, r) { tip.replaceChildren(); const h = document.createElement("div"); h.className = "tip-head"; h.textContent = new Date(r.startedAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); tip.appendChild(h);
-  for (const [k, v] of [["", label(r.activityType)], ["", `${(r.distanceMeters / 1000).toFixed(1)} km`]]) { const row = document.createElement("div"); row.className = "tip-row"; const vv = document.createElement("span"); vv.className = "v"; vv.textContent = v; row.append(vv); tip.appendChild(row); }
+  const n = (state.photosByWorkout.get(r.id) ?? []).length;
+  for (const [k, v] of [["", label(r.activityType)], ["", `${(r.distanceMeters / 1000).toFixed(1)} km`], ...(n ? [["", `📷 ${n} photo${n === 1 ? "" : "s"} — click to see`]] : [])]) { const row = document.createElement("div"); row.className = "tip-row"; const vv = document.createElement("span"); vv.className = "v"; vv.textContent = v; row.append(vv); tip.appendChild(row); }
   tip.dataset.show = "1"; tip.style.left = `${Math.min(innerWidth - 220, e.clientX + 14)}px`; tip.style.top = `${Math.max(8, e.clientY - 60)}px`; }
 let drag = null;
 hero.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, cx: state.cam.x, cy: state.cam.y, moved: false }; hero.setPointerCapture(e.pointerId); hero.classList.add("dragging"); });
@@ -213,7 +224,25 @@ hero.addEventListener("pointermove", (e) => {
   if (drag) { state.cam.x = drag.cx + (e.clientX - drag.x); state.cam.y = drag.cy + (e.clientY - drag.y); drag.moved = true; renderHero(); return; }
   const r = pick(x, y); if (r !== state.hover) { state.hover = r; renderHero(); } if (r) showTip(e, r); else tip.dataset.show = "0";
 });
-hero.addEventListener("pointerup", () => { drag = null; hero.classList.remove("dragging"); });
+hero.addEventListener("pointerup", () => { const clicked = drag && !drag.moved; drag = null; hero.classList.remove("dragging"); if (clicked && state.hover) showRoutePhotos(state.hover); });
+function showRoutePhotos(r) {
+  const strip = document.getElementById("route-photos"); const ps = state.photosByWorkout.get(r.id) ?? [];
+  if (!ps.length) { strip.hidden = true; return; }
+  strip.replaceChildren(...ps.map(photoEl)); strip.hidden = false;
+}
+function photoEl(p) {
+  const a = document.createElement("a"); a.className = "photo"; a.href = p.url; a.target = "_blank"; a.rel = "noopener";
+  const img = document.createElement("img"); img.src = p.url; img.loading = "lazy"; img.alt = p.caption || p.activityName || "photo"; a.appendChild(img);
+  const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = `${new Date(p.takenAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · ${p.caption || p.activityName}`; a.appendChild(cap);
+  return a;
+}
+function renderPhotos() {
+  const card = document.getElementById("photos-card"), host = document.getElementById("photos"), note = document.getElementById("photos-note");
+  if (!state.photos.length) { card.hidden = true; return; }
+  card.hidden = false; const shown = state.photos.slice(0, 48);
+  note.textContent = `${state.photos.length} from Strava · newest first${state.photos.length > shown.length ? ` · showing ${shown.length}` : ""}`;
+  host.replaceChildren(...shown.map(photoEl));
+}
 hero.addEventListener("pointerleave", () => { drag = null; hero.classList.remove("dragging"); if (state.hover) { state.hover = null; renderHero(); } tip.dataset.show = "0"; });
 hero.addEventListener("wheel", (e) => { e.preventDefault(); const rect = hero.getBoundingClientRect(); const x = e.clientX - rect.left, y = e.clientY - rect.top; const f = Math.exp(-e.deltaY * 0.0015); state.cam = { s: state.cam.s * f, x: x - (x - state.cam.x) * f, y: y - (y - state.cam.y) * f }; renderHero(); }, { passive: false });
 
@@ -231,6 +260,7 @@ function ensureLeaflet() {
   new Routes().addTo(lmap);
   lmap.on("mousemove", (e) => { const r = pickWith(e.containerPoint.x, e.containerPoint.y, (p) => { const c = lmap.latLngToContainerPoint(p); return [c.x, c.y]; }, true); if (r !== lhover) { lhover = r; drawLeaflet(); } if (r) showTip(e.originalEvent, r); else tip.dataset.show = "0"; });
   lmap.on("mouseout", () => { if (lhover) { lhover = null; drawLeaflet(); } tip.dataset.show = "0"; });
+  lmap.on("click", () => { if (lhover) showRoutePhotos(lhover); });
   return true;
 }
 function drawLeaflet() {
@@ -331,7 +361,8 @@ function renderPlaces() {
     ctx.globalCompositeOperation = "lighter"; ctx.lineWidth = 1.4; ctx.globalAlpha = rs.length > 20 ? 0.2 : 0.6; ctx.strokeStyle = css("--glow");
     for (const r of rs) { ctx.beginPath(); r.m.forEach((q, i) => { const x = ox + q[0] * s, y = oy - q[1] * s; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke(); }
     const name = document.createElement("b"); name.textContent = placeName(p) ?? `${p.centre.lat.toFixed(2)}°, ${p.centre.lon.toFixed(2)}°`; name.dataset.place = p.index;
-    const l = document.createElement("div"); l.className = "l"; l.textContent = `${p.routes} route${p.routes === 1 ? "" : "s"} · ${Math.round(rs.reduce((n, r) => n + r.distanceMeters, 0) / 1000)} km · ${p.first.slice(0, 7)}${p.first.slice(0, 7) !== p.last.slice(0, 7) ? ` – ${p.last.slice(0, 7)}` : ""}`;
+    const nPhotos = rs.reduce((n, r) => n + (state.photosByWorkout.get(r.id) ?? []).length, 0);
+    const l = document.createElement("div"); l.className = "l"; l.textContent = `${p.routes} route${p.routes === 1 ? "" : "s"} · ${Math.round(rs.reduce((n, r) => n + r.distanceMeters, 0) / 1000)} km · ${p.first.slice(0, 7)}${p.first.slice(0, 7) !== p.last.slice(0, 7) ? ` – ${p.last.slice(0, 7)}` : ""}${nPhotos ? ` · 📷 ${nPhotos}` : ""}`;
     btn.append(c, name, l); btn.addEventListener("click", () => { state.view = "place"; state.place = p.index; state.cam = null; state.hover = null; renderAll(); scrollTo({ top: 0, behavior: "smooth" }); });
     return btn;
   }));
@@ -380,13 +411,14 @@ async function load() {
     if (r.status === 401) { signOut("That key was rejected."); return; }
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     state.data = await r.json(); prepare(state.data);
+    try { const pr = await fetch("/api/photos", { headers: { "x-api-key": state.key } }); if (pr.ok) { state.photos = (await pr.json()).photos ?? []; state.photosByWorkout = new Map(); for (const p of state.photos) if (p.workoutId) (state.photosByWorkout.get(p.workoutId) ?? state.photosByWorkout.set(p.workoutId, []).get(p.workoutId)).push(p); } } catch { /* no photos is fine */ }
     const acts = [...new Set(state.data.routes.map((x) => x.activityType))].sort((a, b) => state.data.routes.filter((x) => x.activityType === b).length - state.data.routes.filter((x) => x.activityType === a).length);
     state.activities = new Set(acts);
     const g = document.getElementById("activity-group"); g.replaceChildren(...acts.map((a) => { const b = document.createElement("button"); b.type = "button"; b.dataset.activity = a; b.textContent = `${label(a)} · ${state.data.routes.filter((x) => x.activityType === a).length}`; b.setAttribute("aria-pressed", "true"); return b; }));
     if (!g.dataset.wired) { g.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; const a = b.dataset.activity; if (state.activities.has(a)) { if (state.activities.size === 1) return; state.activities.delete(a); } else state.activities.add(a); b.setAttribute("aria-pressed", String(state.activities.has(a))); renderAll(); }); g.dataset.wired = "1"; }
     const first = state.data.routes[0], last = state.data.routes[state.data.routes.length - 1];
     document.getElementById("span-label").textContent = first ? `${state.data.count} routes · ${first.startedAt.slice(0, 7)} – ${last.startedAt.slice(0, 7)} · ${Math.round(state.data.routes.reduce((n, x) => n + x.distanceMeters, 0) / 1000).toLocaleString()} km` : "no routes yet — run the export import with the workout-routes folder";
-    state.view = "home"; state.cam = null; renderAll(); renderOverview(); renderPlaces();
+    state.view = "home"; state.cam = null; renderAll(); renderOverview(); renderPlaces(); renderPhotos();
   } catch (e) { err.textContent = `Could not load routes: ${e.message}`; err.hidden = false; }
   finally { app.classList.remove("stale"); }
 }
@@ -399,7 +431,7 @@ function init() {
   wireGroup("colour-group", "colour", (v) => { state.colour = v; renderHero(); });
   wireGroup("basemap-group", "basemap", (v) => { if (v !== "none" && !hasLeaflet()) { alert("The map library did not load; check the connection."); return; } state.basemap = v; writeStored("workout-tracker.basemap", v); state.cam = null; renderHero(); renderOverview(); });
   wireGroup("range-group", "range", (v) => { state.range = v; state.cam = null; renderAll(); });
-  document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; renderAll(); });
+  document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; document.getElementById("route-photos").hidden = true; renderAll(); });
   document.getElementById("toggle-table").addEventListener("click", (e) => { const p = document.getElementById("table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderTable(); });
   document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); if (state.data) { renderAll(); renderOverview(); renderPlaces(); } });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
