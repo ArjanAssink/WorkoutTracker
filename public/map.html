@@ -489,7 +489,7 @@ function init() {
   document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); if (state.data) { renderAll(); renderOverview(); renderPlaces(); } });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
   document.getElementById("gate-key").addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("gate-go").click(); });
-  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (state.data) { state.cam = null; renderHero(); renderOverview(); } }, 120); });
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (state.data) { state.cam = state.focus ? { fitTo: pad(state.focus.bb) } : null; renderHero(); renderOverview(); } }, 120); });
   const fromUrl = new URL(location.href).searchParams.get("key"); if (fromUrl) history.replaceState(null, "", location.pathname);
   const key = fromUrl || readStored(KEY_STORAGE); if (key) start(key); else signOut();
 }
