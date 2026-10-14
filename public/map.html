@@ -39,7 +39,8 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; } .s
 .card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; } .card h2 { font-size: 14px; font-weight: 600; margin: 0; } .card .note { font-size: 12px; color: var(--text-muted); }
 .hero { position: relative; margin-top: 12px; } .hero canvas { display: block; width: 100%; border-radius: 10px; background: var(--canvas); cursor: grab; touch-action: none; } .hero canvas.dragging { cursor: grabbing; }
 .hero .lmap, .overview .lmap { height: 100%; border-radius: 10px; background: var(--canvas); } .hero .lmap { position: absolute; inset: 0; } .overview .lmap { position: absolute; inset: 0; }
-.leaflet-container { font: inherit; } .leaflet-control-attribution { font-size: 10px; background: rgba(0,0,0,0.5) !important; color: #bbb !important; } .leaflet-control-attribution a { color: #ddd !important; }
+.leaflet-container { font: inherit; } .leaflet-tile-pane .dark-tiles { filter: invert(1) grayscale(0.85) brightness(0.75) contrast(1.15); }
+.hero canvas.leaflet-zoom-hide { background: transparent !important; border-radius: 0; } .leaflet-control-attribution { font-size: 10px; background: rgba(0,0,0,0.5) !important; color: #bbb !important; } .leaflet-control-attribution a { color: #ddd !important; }
 .hero .tag { position: absolute; left: 12px; top: 10px; background: rgba(0,0,0,0.55); color: #ddd; padding: 4px 9px; border-radius: 6px; font-size: 12px; pointer-events: none; }
 .hero .hint { position: absolute; right: 12px; bottom: 10px; color: rgba(255,255,255,0.45); font-size: 11px; pointer-events: none; }
 .overview { position: relative; margin-top: 12px; } .overview canvas { display: block; width: 100%; border-radius: 10px; background: var(--canvas); cursor: pointer; }
@@ -133,7 +134,8 @@ const state = { key: "", data: null, colour: "glow", activities: new Set(), rang
 /* Tile sources: OpenStreetMap's own tiles, and CARTO's dark rendering of OSM data. Both need their attribution shown. */
 const BASEMAPS = {
   osm: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors", maxZoom: 19, blend: "source-over", line: "#c2410c", alphaDense: 0.22, alphaSparse: 0.6 },
-  dark: { url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors © <a href=\"https://carto.com/attributions\">CARTO</a>", maxZoom: 19, blend: "lighter", line: null, alphaDense: 0.09, alphaSparse: 0.4 },
+  // The same OSM tiles, inverted and muted with a CSS filter — a dark basemap without a second provider or a key.
+  dark: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors", maxZoom: 19, blend: "lighter", line: null, alphaDense: 0.09, alphaSparse: 0.4, className: "dark-tiles" },
 };
 const hasLeaflet = () => typeof L !== "undefined";
 function readStored(n) { try { return localStorage.getItem(n) ?? ""; } catch { return ""; } }
@@ -254,7 +256,7 @@ function showLeafletHero() {
   const routes = visible(); const el = document.getElementById("hero-map"); el.hidden = false; hero.style.visibility = "hidden";
   const H = Math.round(Math.min(640, Math.max(360, (hero.clientWidth || 1000) * 0.6))); hero.style.height = `${H}px`; el.style.height = `${H}px`;
   ensureLeaflet(); lmap.invalidateSize();
-  const bm = BASEMAPS[state.basemap]; if (!ltiles || ltiles._bm !== state.basemap) { if (ltiles) ltiles.remove(); ltiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom }); ltiles._bm = state.basemap; ltiles.addTo(lmap); }
+  const bm = BASEMAPS[state.basemap]; if (!ltiles || ltiles._bm !== state.basemap) { if (ltiles) ltiles.remove(); ltiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom, className: bm.className ?? "" }); ltiles._bm = state.basemap; ltiles.addTo(lmap); }
   if (!state.cam && routes.length) { const bb = state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes)); const toLL = (c) => [Math.atan(Math.sinh(c[1])) * 180 / Math.PI, c[0] * 180 / Math.PI]; lmap.fitBounds([toLL([bb[0], bb[1]]), toLL([bb[2], bb[3]])], { animate: false }); state.cam = "leaflet"; }
   drawLeaflet();
 }
@@ -271,7 +273,7 @@ function renderOverviewLeaflet() {
   document.getElementById("overview-hint").textContent = "hover a bubble · click to open";
   if (!omap) { omap = L.map(el, { zoomControl: true, attributionControl: true, zoomSnap: 0.25 }); omap.on("click", () => {}); }
   omap.invalidateSize();
-  const bm = BASEMAPS[state.basemap]; if (!otiles || otiles._bm !== state.basemap) { if (otiles) otiles.remove(); otiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom }); otiles._bm = state.basemap; otiles.addTo(omap); }
+  const bm = BASEMAPS[state.basemap]; if (!otiles || otiles._bm !== state.basemap) { if (otiles) otiles.remove(); otiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom, className: bm.className ?? "" }); otiles._bm = state.basemap; otiles.addTo(omap); }
   if (omarkers) omarkers.remove(); omarkers = L.layerGroup().addTo(omap);
   const homeRoutes = routes.filter((r) => r.place === null).length;
   for (const pl of places) { const m = L.circleMarker([pl.centre.lat, pl.centre.lon], { radius: 4 + Math.sqrt(pl.routes) * 2, color: "#fff", weight: 1.5, fillColor: css("--glow"), fillOpacity: 0.85 }).addTo(omarkers);
