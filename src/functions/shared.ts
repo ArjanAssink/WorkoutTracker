@@ -9,6 +9,7 @@ import { RecoveryRepository } from "../storage/recoveryRepository.js";
 import { RouteRepository } from "../storage/routeRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
 import { StravaRepository } from "../storage/stravaRepository.js";
+import { PhotoStore } from "../storage/photoStore.js";
 
 /**
  * One repository per process. Azure Functions reuses a warm worker across invocations, so
@@ -132,4 +133,16 @@ export function getStravaRepository(): Promise<StravaRepository> {
     return repository;
   })();
   return stravaPromise;
+}
+
+let photoStorePromise: Promise<PhotoStore> | undefined;
+
+export function getPhotoStore(): Promise<PhotoStore> {
+  photoStorePromise ??= (async () => {
+    const { storageConnectionString } = config();
+    const store = PhotoStore.fromConnectionString(storageConnectionString);
+    await store.ensureContainer();
+    return store;
+  })();
+  return photoStorePromise;
 }

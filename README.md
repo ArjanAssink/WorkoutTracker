@@ -452,15 +452,39 @@ a street away from the front door. Off by default; the page is behind the API ke
 ## Strava
 
 Strava adds what Apple Health lacks: the name you gave a session, its photos, kudos, its
-own "relative effort", the gear, and a polyline for anything recorded on the phone — which
-keeps the Routes page current between exports. Nothing is created on the workout side;
-Strava only decorates, matched to the Apple Health workout that starts within five minutes.
+own "relative effort" and training load, the gear, the weather, and GPX for anything
+recorded in the Strava app. Nothing is created on the workout side; Strava only decorates,
+matched to the Apple Health workout that starts within five minutes.
 
-Setting it up, once:
+Two ways in. The **archive** needs no subscription and is the one that works for a free
+account; the **API** route is wired but Strava now only lets subscribers create API
+applications.
 
-1. At [strava.com/settings/api](https://www.strava.com/settings/api) create an application.
-   Any name; **Authorization Callback Domain** = your app's host (e.g. `workouts.example.com`).
-   Note the Client ID and Client Secret.
+### The archive (free)
+
+Settings → My Account → *Download or Delete Your Account* → **Request Your Archive**. The
+zip arrives by email within an hour or two: `activities.csv` (one row per activity with
+~100 columns), `media/` (the photos at full size), `media.csv` (captions), `reactions.csv`
+(every kudos), `privacy_zones.csv`, GPX/FIT files, planned routes, gear. Then:
+
+```bash
+npm run strava -- ~/Downloads/export_123.zip --dry-run
+npm run strava -- ~/Downloads/export_123.zip            # needs WORKOUTS_STORAGE
+```
+
+The importer matches activities to workouts by start time (the CSV's dates are UTC,
+written the American way — checked against the same workout in the Apple data), stores
+them beside the workouts, copies the photos into a private **Blob container** in the same
+storage account (served to the pages through day-long signed URLs, never through the
+function), reads the GPX files as routes for workouts the export had none for, and uses
+your Strava privacy zone as the route privacy zone. FIT files are skipped — they are the
+watch's own recording, which the Apple export already carries. Videos are skipped.
+Re-runs are idempotent (photos already in the container are not re-uploaded).
+
+### The API (subscribers)
+
+1. At [strava.com/settings/api](https://www.strava.com/settings/api) create an application
+   with **Authorization Callback Domain** = your app's host. Note the Client ID and Secret.
 2. Store them, and the public URL the callback should use:
 
 ```bash
@@ -469,24 +493,14 @@ az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNC
 ```
 
 3. Open `$WORKOUTS_URL/api/strava/connect?key=<INGEST_API_KEY>` in a browser and approve.
-   The tokens go to the `settings` table (Strava rotates the refresh token, so they cannot
-   live in an app setting). Then:
+   Tokens go to the `settings` table (Strava rotates the refresh token). Then
+   `POST /api/strava/sync?since=2022-01-01` for the backfill — a few rounds, since Strava
+   allows 200 requests per 15 minutes and a sync stops cleanly at the limit — and a timer
+   syncs daily at 03:20 UTC from the stored cursor.
 
-```bash
-curl -s -X POST "$WORKOUTS_URL/api/strava/sync?since=2022-01-01" -H "x-api-key: $KEY"   # the backfill
-curl -s "$WORKOUTS_URL/api/strava/status" -H "x-api-key: $KEY"
-```
-
-A timer syncs daily at 03:20 UTC from the stored cursor. Strava allows 200 requests per
-15 minutes; a sync stops cleanly at the limit and continues where it left off on the next
-run, so a large backfill may take a few runs. Photos are stored as their Strava URLs (the
-largest size offered) — the images stay on Strava's CDN.
-
-What else the API offers, not wired yet: per-second **streams** (heart rate, pace,
-altitude, cadence, power) per activity; **best efforts** and **segment efforts** with
-PRs; **laps** and **splits**; **gear** with mileage (shoes, bikes); athlete **zones** and
-**FTP**; **starred segments**; **planned routes**; and **webhooks** for a push on every new
-activity instead of a daily poll.
+What else the API offers, not wired: per-second **streams** (heart rate, pace, altitude,
+cadence, power); **best efforts** and **segment efforts** with PRs; **laps** and
+**splits**; athlete **zones** and **FTP**; **webhooks** for a push on every new activity.
 
 ## Rescoring history
 

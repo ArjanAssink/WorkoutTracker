@@ -29,6 +29,11 @@ export interface StravaActivity {
   device_name?: string;
   description?: string;
   map?: { summary_polyline?: string };
+  /** Archive-only extras. */
+  weather_condition?: string;
+  temperature_c?: number;
+  training_load?: number;
+  perceived_exertion?: number;
 }
 
 export interface StravaPhoto {
@@ -64,6 +69,11 @@ export interface StravaActivityRecord {
   gearId?: string;
   deviceName?: string;
   description?: string;
+  /** From the archive's CSV: Strava's weather snapshot and its own load figures. */
+  weatherCondition?: string;
+  temperatureC?: number;
+  trainingLoad?: number;
+  perceivedExertion?: number;
   hasPolyline: boolean;
   recordedAt: string;
 }
@@ -109,18 +119,23 @@ export function matchWorkout(a: StravaActivity, workouts: Workout[]): Workout | 
 }
 
 export function toActivityRecord(a: StravaActivity, workout: Workout | undefined, now: Date = new Date()): StravaActivityRecord {
-  const opt = <K extends string, V>(k: K, v: V | undefined | null): Record<K, V> | Record<string, never> => (v === undefined || v === null ? {} : ({ [k]: v } as Record<K, V>));
-  return {
+  const r = (n: number | undefined) => (n === undefined ? undefined : Math.round(n));
+  return strip({
     stravaId: a.id, startedAt: new Date(a.start_date).toISOString(), name: a.name ?? "", sportType: a.sport_type ?? a.type ?? "", activityType: activityTypeOf(a),
-    ...opt("workoutId", workout?.id),
-    ...opt("elapsedSeconds", a.elapsed_time), ...opt("movingSeconds", a.moving_time), ...opt("distanceMeters", a.distance === undefined ? undefined : Math.round(a.distance)),
-    ...opt("elevationGainMeters", a.total_elevation_gain === undefined ? undefined : Math.round(a.total_elevation_gain)),
-    ...opt("averageHeartRate", a.average_heartrate === undefined ? undefined : Math.round(a.average_heartrate)), ...opt("maxHeartRate", a.max_heartrate === undefined ? undefined : Math.round(a.max_heartrate)),
-    ...opt("relativeEffort", a.suffer_score), ...opt("kudos", a.kudos_count), ...opt("comments", a.comment_count), ...opt("achievements", a.achievement_count), ...opt("prs", a.pr_count),
-    ...opt("photoCount", a.total_photo_count), ...opt("gearId", a.gear_id), ...opt("deviceName", a.device_name), ...opt("description", a.description?.slice(0, 2000)),
+    workoutId: workout?.id,
+    elapsedSeconds: a.elapsed_time, movingSeconds: a.moving_time, distanceMeters: r(a.distance), elevationGainMeters: r(a.total_elevation_gain),
+    averageHeartRate: r(a.average_heartrate), maxHeartRate: r(a.max_heartrate), relativeEffort: a.suffer_score,
+    kudos: a.kudos_count, comments: a.comment_count, achievements: a.achievement_count, prs: a.pr_count, photoCount: a.total_photo_count,
+    gearId: a.gear_id, deviceName: a.device_name, description: a.description?.slice(0, 2000),
+    weatherCondition: a.weather_condition, temperatureC: a.temperature_c, trainingLoad: a.training_load, perceivedExertion: a.perceived_exertion,
     hasPolyline: Boolean(a.map?.summary_polyline),
     recordedAt: now.toISOString(),
-  };
+  }) as StravaActivityRecord;
+}
+
+/** Drops undefined values so optional fields are absent rather than present-and-undefined. */
+function strip<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 export function toPhotoRecords(a: StravaActivity, photos: StravaPhoto[], workout: Workout | undefined, now: Date = new Date()): StravaPhotoRecord[] {
@@ -131,12 +146,12 @@ export function toPhotoRecords(a: StravaActivity, photos: StravaPhoto[], workout
     const url = best === undefined ? undefined : p.urls?.[String(best)];
     if (!url || !p.unique_id) continue;
     const dims = best === undefined ? undefined : p.sizes?.[String(best)];
-    out.push({
-      uniqueId: p.unique_id, stravaId: a.id, ...(workout ? { workoutId: workout.id } : {}),
+    out.push(strip({
+      uniqueId: p.unique_id, stravaId: a.id, workoutId: workout?.id,
       takenAt: new Date(p.created_at ?? a.start_date).toISOString(), url,
-      ...(dims ? { width: dims[0], height: dims[1] } : {}), ...(p.caption ? { caption: p.caption.slice(0, 500) } : {}),
+      width: dims?.[0], height: dims?.[1], caption: p.caption ? p.caption.slice(0, 500) : undefined,
       activityName: a.name ?? "", activityType: activityTypeOf(a), recordedAt: now.toISOString(),
-    });
+    }) as StravaPhotoRecord);
   }
   return out;
 }

@@ -23,11 +23,13 @@
     "add": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/add-workouts.js",
     "rescore": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/rescore.js",
     "lifts": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-lifts.js",
-    "block": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-block-log.js"
+    "block": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-block-log.js",
+    "strava": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-strava.js"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.2",
     "@azure/functions": "^4.16.5",
+    "@azure/storage-blob": "^12.34.0",
     "sax": "^1.6.1",
     "zod": "^4.6.5"
   },

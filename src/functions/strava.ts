@@ -5,7 +5,7 @@ import { matchWorkout, routeFromStrava, toActivityRecord, toPhotoRecords, type S
 import { isAuthorised } from "../http/auth.js";
 import { json, ok, serverError, unauthorised } from "../http/responses.js";
 import { authoriseUrl, CURSOR_KEY, StravaClient, StravaError } from "../strava/client.js";
-import { getRepository, getRouteRepository, getSettingsRepository, getStravaRepository } from "./shared.js";
+import { getPhotoStore, getRepository, getRouteRepository, getSettingsRepository, getStravaRepository } from "./shared.js";
 
 /**
  * Strava: connect once, then sync.
@@ -145,7 +145,10 @@ export async function photosHttp(request: HttpRequest, context: InvocationContex
     const to = new Date(Date.now() + 86_400_000);
     const from = q.get("from") ? new Date(`${q.get("from")}T00:00:00Z`) : new Date("2010-01-01T00:00:00Z");
     const photos = (await (await getStravaRepository()).photos(from, to)).sort((a, b) => b.takenAt.localeCompare(a.takenAt));
-    return ok({ count: photos.length, photos });
+    // Archive photos live in Blob storage behind `blob:<name>`; hand out a day-long signed URL for each.
+    const store = photos.some((p) => p.url.startsWith("blob:")) ? await getPhotoStore() : undefined;
+    const signed = photos.map((p) => (p.url.startsWith("blob:") && store ? { ...p, url: store.signedUrl(p.url.slice(5)) } : p));
+    return ok({ count: signed.length, photos: signed });
   } catch (error) {
     context.error("Failed to list photos", error);
     return serverError("Failed to list photos");

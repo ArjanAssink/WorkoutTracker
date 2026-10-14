@@ -20,7 +20,7 @@ interface ZipEntry {
   method: number;
 }
 
-function readZip(buffer: Buffer): Map<string, Buffer> {
+export function readZip(buffer: Buffer): Map<string, Buffer> {
   // End-of-central-directory record: signature 0x06054b50, scanned from the tail.
   let eocd = -1;
   for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 65_557); i--) {
