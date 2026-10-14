@@ -11,7 +11,8 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   names — resource group, Function App (Flex Consumption, westeurope), storage account —
   are **not in the repo**: they live in the gitignored `.env` as `WORKOUTS_URL`,
   `AZURE_RESOURCE_GROUP`, `AZURE_FUNCTION_APP`, `AZURE_STORAGE_ACCOUNT` (template:
-  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `recovery`, `routes`. The signed-in `az` user owns
+  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `recovery`, `routes`, `strava`, `settings`; blob
+  container `photos`. The signed-in `az` user owns
   the subscription.
 - **Data loaded**: ~3,180 workouts (Feb 2018 → now, Apple Health export + Health Auto
   Export + manual), 4,229 days of body weight (Feb 2012 →), 96 lift PRs + 40 rep maxes +
@@ -140,11 +141,13 @@ against every other, and relabelling a slug changes identity.
    names moved to `.env`, the person's numbers taken out of the docs. Keep it that way:
    no domain, resource names, heart rates, bodyweights or lift numbers in commits or docs.
 4. CI via OIDC (needs the user to run `scripts/setup-github-oidc.sh`).
-5. **Strava** (`src/strava/client.ts`, `functions/strava.ts`, `domain/strava.ts`): code is
-   deployed; the connection needs the user's API application (client id/secret) and one
-   browser approval — see README "Strava". Then `POST /api/strava/sync?since=2022-01-01`
-   repeatedly until `rateLimited` is false. Photos show on the Routes page; polylines fill
-   routes between exports. Streams/segments/gear are documented as next steps, not built.
+5. **Strava** comes from the free data archive (`npm run strava -- export_*.zip`;
+   `src/ingest/stravaArchive.ts`, `scripts/import-strava.ts`), not the API — Strava only
+   lets subscribers create API applications and the user is on the free tier. The API
+   code (`src/strava/client.ts`, `functions/strava.ts`) stays, dormant. Photos are blobs
+   in the private `photos` container of the storage account, served through signed URLs
+   from `/api/photos`; the `strava` table holds activities (`me|strava|YYYY`) and photo
+   records (`me|photos|YYYY`). Archive CSV dates are UTC. FIT files are not parsed.
 
 ## Working agreements
 
