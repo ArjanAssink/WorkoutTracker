@@ -54,6 +54,11 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; } .s
 .photo { display: block; position: relative; border-radius: 8px; overflow: hidden; background: var(--canvas); aspect-ratio: 4 / 3; text-decoration: none; color: inherit; }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; } .photo .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 6px; font-size: 11px; color: #eee; background: linear-gradient(transparent, rgba(0,0,0,0.65)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .strip { display: flex; gap: 8px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; } .strip .photo { flex: 0 0 180px; }
+.lb { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; }
+.lb img { max-width: 94vw; max-height: 78vh; object-fit: contain; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
+.lb .cap { color: #eee; font-size: 13px; text-align: center; } .lb .cap span { color: #999; margin-left: 8px; }
+.lb .bar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; } .lb .bar button, .lb .bar a { font: inherit; font-size: 13px; color: #eee; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px 12px; cursor: pointer; text-decoration: none; }
+.lb .bar button:disabled { opacity: 0.35; cursor: default; } .lb .x { position: absolute; top: 12px; right: 16px; font-size: 26px; color: #eee; background: none; border: 0; cursor: pointer; }
 .stale { opacity: 0.45; transition: opacity 120ms ease; }
 .tip { position: fixed; z-index: 10; pointer-events: none; opacity: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.13); transition: opacity 90ms ease; max-width: 260px; }
 .tip[data-show="1"] { opacity: 1; } .tip .tip-head { color: var(--text-muted); margin-bottom: 4px; } .tip-row { display: flex; gap: 7px; white-space: nowrap; } .tip-row .v { font-weight: 600; color: var(--text-primary); } .tip-row .k { color: var(--text-secondary); }
@@ -132,6 +137,12 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
   </div>
 </div>
 <div class="tip" id="tip" role="status" aria-live="polite"></div>
+<div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo">
+  <button class="x" id="lb-close" type="button" aria-label="Close">×</button>
+  <img id="lb-img" alt="">
+  <div class="cap" id="lb-cap"></div>
+  <div class="bar"><button type="button" id="lb-prev">‹ Previous</button><span id="lb-count" style="color:#999;font-size:13px;align-self:center"></span><button type="button" id="lb-next">Next ›</button><button type="button" id="lb-route">Show route</button><a id="lb-open" target="_blank" rel="noopener">Open original</a></div>
+</div>
 
 <script>
 /* Natural Earth 110m country outlines (public domain), outer rings only, 0.01° precision: [lon,lat,lon,lat,…] per ring. */
@@ -140,7 +151,7 @@ const WORLD = [[180,-16.07,180,-16.56,179.36,-16.8,178.73,-17.01,178.6,-16.64,17
 <script type="module">
 "use strict";
 const KEY_STORAGE = "workout-tracker.apiKey", THEME_STORAGE = "workout-tracker.theme", PLACE_STORAGE = "workout-tracker.places";
-const state = { key: "", data: null, photos: [], photosByWorkout: new Map(), colour: "glow", activities: new Set(), range: "all", view: "home", place: null, hover: null, cam: null, basemap: readStored("workout-tracker.basemap") || "none" };
+const state = { key: "", data: null, photos: [], photosByWorkout: new Map(), focus: null, album: [], albumIndex: 0, colour: "glow", activities: new Set(), range: "all", view: "home", place: null, hover: null, cam: null, basemap: readStored("workout-tracker.basemap") || "none" };
 /* Tile sources: OpenStreetMap's own tiles, and CARTO's dark rendering of OSM data. Both need their attribution shown. */
 const BASEMAPS = {
   osm: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors", maxZoom: 19, blend: "source-over", line: "#c2410c", alphaDense: 0.22, alphaSparse: 0.6 },
@@ -181,7 +192,7 @@ function visible() {
 
 /* ---- the hero canvas: pan, zoom, hover ---- */
 const hero = document.getElementById("hero"); const hctx = hero.getContext("2d");
-function camFor(routes) { const bb = state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes)); const W = hero.clientWidth, H = hero.clientHeight; const s = Math.min(W / (bb[2] - bb[0]), H / (bb[3] - bb[1])); return { s, x: (W - (bb[2] - bb[0]) * s) / 2 - bb[0] * s, y: (H - (bb[3] - bb[1]) * s) / 2 + bb[3] * s }; }
+function camFor(routes) { const bb = state.cam?.fitTo ?? (state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes))); const W = hero.clientWidth, H = hero.clientHeight; const s = Math.min(W / (bb[2] - bb[0]), H / (bb[3] - bb[1])); return { s, x: (W - (bb[2] - bb[0]) * s) / 2 - bb[0] * s, y: (H - (bb[3] - bb[1]) * s) / 2 + bb[3] * s }; }
 const project = (p) => [state.cam.x + p[0] * state.cam.s, state.cam.y - p[1] * state.cam.s];
 function renderHero() {
   if (state.basemap !== "none" && hasLeaflet()) { showLeafletHero(); return; }
@@ -192,16 +203,16 @@ function renderHero() {
   hctx.fillStyle = css("--canvas"); hctx.fillRect(0, 0, W, H);
   document.getElementById("hero-tag").textContent = routes.length ? `${routes.length} routes · ${Math.round(routes.reduce((n, r) => n + r.distanceMeters, 0) / 1000).toLocaleString()} km` : "no routes match";
   if (!routes.length) return;
-  if (!state.cam) state.cam = camFor(routes);
+  if (!state.cam || state.cam.fitTo) state.cam = camFor(routes);
   const byAct = state.colour === "activity"; const dense = routes.length > 300; const alpha = dense ? (byAct ? 0.14 : 0.07) : (byAct ? 0.5 : 0.35);
   hctx.globalCompositeOperation = "lighter"; hctx.lineWidth = 1.3; hctx.lineJoin = "round"; hctx.lineCap = "round";
   for (const r of routes) {
-    if (r === state.hover) continue;
+    if (r === state.hover || r === state.focus) continue;
     hctx.strokeStyle = byAct ? colourOf(r.activityType) : css("--glow"); hctx.globalAlpha = alpha; hctx.beginPath();
     r.m.forEach((p, i) => { const [x, y] = project(p); if (i) hctx.lineTo(x, y); else hctx.moveTo(x, y); }); hctx.stroke();
   }
   hctx.globalCompositeOperation = "source-over"; hctx.globalAlpha = 1;
-  if (state.hover) { hctx.strokeStyle = "#fff"; hctx.lineWidth = 2.5; hctx.beginPath(); state.hover.m.forEach((p, i) => { const [x, y] = project(p); if (i) hctx.lineTo(x, y); else hctx.moveTo(x, y); }); hctx.stroke(); }
+  for (const r of [state.focus, state.hover].filter(Boolean)) { hctx.strokeStyle = "#fff"; hctx.lineWidth = 2.5; hctx.beginPath(); r.m.forEach((p, i) => { const [x, y] = project(p); if (i) hctx.lineTo(x, y); else hctx.moveTo(x, y); }); hctx.stroke(); }
   document.getElementById("legend").replaceChildren(...(byAct ? [...new Set(routes.map((r) => r.activityType))].map((a) => { const s = document.createElement("span"); const i = document.createElement("i"); i.style.background = colourOf(a); const t = document.createElement("span"); t.textContent = `${label(a)} · ${routes.filter((r) => r.activityType === a).length}`; s.append(i, t); return s; }) : []));
 }
 /* Nearest route to the pointer, within 8 px, measured against segment midpoints — cheap and good enough at this density. */
@@ -232,6 +243,7 @@ function showRoutePhotos(r) {
 }
 function photoEl(p) {
   const a = document.createElement("a"); a.className = "photo"; a.href = p.url; a.target = "_blank"; a.rel = "noopener";
+  a.addEventListener("click", (e) => { e.preventDefault(); openLightbox(p); });
   const img = document.createElement("img"); img.src = p.url; img.loading = "lazy"; img.alt = p.caption || p.activityName || "photo"; a.appendChild(img);
   const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = `${new Date(p.takenAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · ${p.caption || p.activityName}`; a.appendChild(cap);
   return a;
@@ -242,6 +254,39 @@ function visiblePhotos() {
   const routeById = new Map(state.data.routes.map((r) => [r.id, r]));
   return state.photos.filter((p) => state.activities.has(p.activityType) && p.takenAt >= since && (state.view === "home" || (p.workoutId && routeById.get(p.workoutId)?.place === state.place)));
 }
+/* ---- the album: one activity's photos, large, with the route a click away ---- */
+const albumOf = (p) => state.photos.filter((q) => (p.workoutId ? q.workoutId === p.workoutId : q.stravaId === p.stravaId)).sort((a, b) => a.takenAt.localeCompare(b.takenAt));
+function openLightbox(p) { state.album = albumOf(p); state.albumIndex = Math.max(0, state.album.findIndex((q) => q.uniqueId === p.uniqueId)); showAlbum(); document.getElementById("lb").hidden = false; document.getElementById("lb-close").focus(); }
+function showAlbum() {
+  const p = state.album[state.albumIndex]; if (!p) return;
+  const img = document.getElementById("lb-img"); img.src = p.url; img.alt = p.caption || p.activityName || "photo";
+  const route = p.workoutId ? state.data.routes.find((r) => r.id === p.workoutId) : null;
+  const cap = document.getElementById("lb-cap"); cap.replaceChildren(document.createTextNode(`${new Date(p.takenAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · ${p.activityName || label(p.activityType)}`));
+  if (p.caption) { const sp = document.createElement("span"); sp.textContent = p.caption; cap.appendChild(sp); }
+  if (route) { const sp = document.createElement("span"); sp.textContent = `${label(route.activityType)} · ${(route.distanceMeters / 1000).toFixed(1)} km`; cap.appendChild(sp); }
+  document.getElementById("lb-count").textContent = state.album.length > 1 ? `${state.albumIndex + 1} / ${state.album.length}` : "";
+  document.getElementById("lb-prev").disabled = state.albumIndex === 0; document.getElementById("lb-next").disabled = state.albumIndex >= state.album.length - 1;
+  document.getElementById("lb-route").hidden = !route; document.getElementById("lb-open").href = p.url;
+  // Preload the neighbours so paging is instant.
+  for (const q of [state.album[state.albumIndex - 1], state.album[state.albumIndex + 1]]) if (q) { const i = new Image(); i.src = q.url; }
+}
+function closeLightbox() { document.getElementById("lb").hidden = true; }
+function stepAlbum(d) { const i = state.albumIndex + d; if (i < 0 || i >= state.album.length) return; state.albumIndex = i; showAlbum(); }
+/* Jump the map to one route: its own view (home or its place), fitted to it, drawn bright, with its photos under the hero. */
+function focusRoute(r) {
+  closeLightbox();
+  state.view = r.place === null ? "home" : "place"; state.place = r.place; state.focus = r; state.hover = null;
+  if (!state.activities.has(r.activityType)) { state.activities.add(r.activityType); for (const b of document.querySelectorAll("#activity-group button")) if (b.dataset.activity === r.activityType) b.setAttribute("aria-pressed", "true"); }
+  state.cam = { fitTo: pad(r.bb) };
+  renderAll(); renderPhotos(); showRoutePhotos(r); scrollTo({ top: 0, behavior: "smooth" });
+}
+document.getElementById("lb-close").addEventListener("click", closeLightbox);
+document.getElementById("lb").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeLightbox(); });
+document.getElementById("lb-prev").addEventListener("click", () => stepAlbum(-1));
+document.getElementById("lb-next").addEventListener("click", () => stepAlbum(1));
+document.getElementById("lb-route").addEventListener("click", () => { const p = state.album[state.albumIndex]; const r = p?.workoutId && state.data.routes.find((x) => x.id === p.workoutId); if (r) focusRoute(r); });
+addEventListener("keydown", (e) => { if (document.getElementById("lb").hidden) return; if (e.key === "Escape") closeLightbox(); else if (e.key === "ArrowLeft") stepAlbum(-1); else if (e.key === "ArrowRight") stepAlbum(1); });
+
 function renderPhotos() {
   const card = document.getElementById("photos-card"), host = document.getElementById("photos"), note = document.getElementById("photos-note");
   if (!state.photos.length) { card.hidden = true; return; }
@@ -281,20 +326,20 @@ function drawLeaflet() {
   ctx.globalCompositeOperation = bm.blend; ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.globalAlpha = dense ? bm.alphaDense : bm.alphaSparse;
   const bounds = lmap.getBounds().pad(0.1);
   for (const r of routes) {
-    if (r === lhover) continue;
+    if (r === lhover || r === state.focus) continue;
     if (r.bounds.maxLat < bounds.getSouth() || r.bounds.minLat > bounds.getNorth() || r.bounds.maxLon < bounds.getWest() || r.bounds.minLon > bounds.getEast()) continue;
     ctx.strokeStyle = byAct ? colourOf(r.activityType) : (bm.line ?? css("--glow")); ctx.beginPath();
     r.ll.forEach((p, i) => { const c = lmap.latLngToContainerPoint(p); if (i) ctx.lineTo(c.x, c.y); else ctx.moveTo(c.x, c.y); }); ctx.stroke();
   }
   ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
-  if (lhover) { ctx.strokeStyle = bm.line ? "#111" : "#fff"; ctx.lineWidth = 3; ctx.beginPath(); lhover.ll.forEach((p, i) => { const c = lmap.latLngToContainerPoint(p); if (i) ctx.lineTo(c.x, c.y); else ctx.moveTo(c.x, c.y); }); ctx.stroke(); }
+  for (const r of [state.focus, lhover].filter(Boolean)) { ctx.strokeStyle = bm.line ? "#111" : "#fff"; ctx.lineWidth = 3; ctx.beginPath(); r.ll.forEach((p, i) => { const c = lmap.latLngToContainerPoint(p); if (i) ctx.lineTo(c.x, c.y); else ctx.moveTo(c.x, c.y); }); ctx.stroke(); }
 }
 function showLeafletHero() {
   const routes = visible(); const el = document.getElementById("hero-map"); el.hidden = false; hero.style.visibility = "hidden";
   const H = Math.round(Math.min(640, Math.max(360, (hero.clientWidth || 1000) * 0.6))); hero.style.height = `${H}px`; el.style.height = `${H}px`;
   ensureLeaflet(); lmap.invalidateSize();
   const bm = BASEMAPS[state.basemap]; if (!ltiles || ltiles._bm !== state.basemap) { if (ltiles) ltiles.remove(); ltiles = L.tileLayer(bm.url, { attribution: bm.attribution, maxZoom: bm.maxZoom, className: bm.className ?? "" }); ltiles._bm = state.basemap; ltiles.addTo(lmap); }
-  if (!state.cam && routes.length) { const bb = state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes)); const toLL = (c) => [Math.atan(Math.sinh(c[1])) * 180 / Math.PI, c[0] * 180 / Math.PI]; lmap.fitBounds([toLL([bb[0], bb[1]]), toLL([bb[2], bb[3]])], { animate: false }); state.cam = "leaflet"; }
+  if ((!state.cam || state.cam.fitTo) && routes.length) { const bb = state.cam?.fitTo ?? (state.view === "home" ? tightBbox(routes) : pad(bboxOf(routes))); const toLL = (c) => [Math.atan(Math.sinh(c[1])) * 180 / Math.PI, c[0] * 180 / Math.PI]; lmap.fitBounds([toLL([bb[0], bb[1]]), toLL([bb[2], bb[3]])], { animate: false }); state.cam = "leaflet"; }
   drawLeaflet();
 }
 function hideLeafletHero() { document.getElementById("hero-map").hidden = true; hero.style.visibility = ""; hero.style.height = ""; }
@@ -370,7 +415,7 @@ function renderPlaces() {
     const name = document.createElement("b"); name.textContent = placeName(p) ?? `${p.centre.lat.toFixed(2)}°, ${p.centre.lon.toFixed(2)}°`; name.dataset.place = p.index;
     const nPhotos = rs.reduce((n, r) => n + (state.photosByWorkout.get(r.id) ?? []).length, 0);
     const l = document.createElement("div"); l.className = "l"; l.textContent = `${p.routes} route${p.routes === 1 ? "" : "s"} · ${Math.round(rs.reduce((n, r) => n + r.distanceMeters, 0) / 1000)} km · ${p.first.slice(0, 7)}${p.first.slice(0, 7) !== p.last.slice(0, 7) ? ` – ${p.last.slice(0, 7)}` : ""}${nPhotos ? ` · 📷 ${nPhotos}` : ""}`;
-    btn.append(c, name, l); btn.addEventListener("click", () => { state.view = "place"; state.place = p.index; state.cam = null; state.hover = null; renderAll(); renderPhotos(); scrollTo({ top: 0, behavior: "smooth" }); });
+    btn.append(c, name, l); btn.addEventListener("click", () => { state.view = "place"; state.place = p.index; state.cam = null; state.hover = null; state.focus = null; renderAll(); renderPhotos(); scrollTo({ top: 0, behavior: "smooth" }); });
     return btn;
   }));
   nameAll();
@@ -439,7 +484,7 @@ function init() {
   wireGroup("colour-group", "colour", (v) => { state.colour = v; renderHero(); });
   wireGroup("basemap-group", "basemap", (v) => { if (v !== "none" && !hasLeaflet()) { alert("The map library did not load; check the connection."); return; } state.basemap = v; writeStored("workout-tracker.basemap", v); state.cam = null; renderHero(); renderOverview(); });
   wireGroup("range-group", "range", (v) => { state.range = v; state.cam = null; renderAll(); renderPhotos(); });
-  document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; document.getElementById("route-photos").hidden = true; renderAll(); renderPhotos(); });
+  document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; document.getElementById("route-photos").hidden = true; state.focus = null; renderAll(); renderPhotos(); });
   document.getElementById("toggle-table").addEventListener("click", (e) => { const p = document.getElementById("table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderTable(); });
   document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); if (state.data) { renderAll(); renderOverview(); renderPlaces(); } });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
