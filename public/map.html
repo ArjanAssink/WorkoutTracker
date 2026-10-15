@@ -50,7 +50,11 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; } .s
 .place:hover { background: var(--hover-wash); } .place canvas { display: block; width: 100%; border-radius: 4px; background: var(--canvas); }
 .place b { display: block; font-size: 12px; color: var(--text-primary); margin-top: 6px; font-weight: 600; } .place .l { font-size: 11px; color: var(--text-muted); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12px; } .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); } .legend i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
-.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+.photos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: flex-start; }
+/* One frame per activity: its photos flow inside, the frame says which belong together. */
+.album { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--hover-wash); max-width: 100%; }
+.album .head { flex-basis: 100%; font-size: 11px; color: var(--text-muted); padding: 0 4px 2px; display: flex; gap: 8px; align-items: baseline; } .album .head b { color: var(--text-secondary); font-weight: 600; }
+.album .photo { width: 164px; flex: 0 0 auto; } .album[data-n="1"] .photo { width: 164px; }
 .photo { display: block; position: relative; border-radius: 8px; overflow: hidden; background: var(--canvas); aspect-ratio: 4 / 3; text-decoration: none; color: inherit; }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; } .photo .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 6px; font-size: 11px; color: #eee; background: linear-gradient(transparent, rgba(0,0,0,0.65)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .strip { display: flex; gap: 8px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; } .strip .photo { flex: 0 0 180px; }
@@ -245,7 +249,7 @@ function photoEl(p) {
   const a = document.createElement("a"); a.className = "photo"; a.href = p.url; a.target = "_blank"; a.rel = "noopener";
   a.addEventListener("click", (e) => { e.preventDefault(); openLightbox(p); });
   const img = document.createElement("img"); img.src = p.url; img.loading = "lazy"; img.alt = p.caption || p.activityName || "photo"; a.appendChild(img);
-  const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = `${new Date(p.takenAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · ${p.caption || p.activityName}`; a.appendChild(cap);
+  if (p.caption) { const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = p.caption; a.appendChild(cap); }
   return a;
 }
 /* The photos obey the same switches as the map: activities, range, and the place when one is the hero. */
@@ -290,10 +294,20 @@ addEventListener("keydown", (e) => { if (document.getElementById("lb").hidden) r
 function renderPhotos() {
   const card = document.getElementById("photos-card"), host = document.getElementById("photos"), note = document.getElementById("photos-note");
   if (!state.photos.length) { card.hidden = true; return; }
-  const ps = visiblePhotos(); card.hidden = false; const shown = ps.slice(0, 48);
+  const ps = visiblePhotos(); card.hidden = false;
   const where = state.view === "home" ? "" : ` · ${document.getElementById("hero-title").textContent}`;
-  note.textContent = ps.length ? `${ps.length} of ${state.photos.length} from Strava${where} · newest first${ps.length > shown.length ? ` · showing ${shown.length}` : ""}` : `none of the ${state.photos.length} photos match the switches above`;
-  host.replaceChildren(...shown.map(photoEl));
+  // Newest first, grouped by activity: consecutive photos of one session share a frame.
+  const groups = []; for (const p of ps) { const key = p.workoutId ?? `s${p.stravaId}`; const g = groups[groups.length - 1]; if (g && g.key === key) g.photos.push(p); else groups.push({ key, photos: [p] }); }
+  note.textContent = ps.length ? `${ps.length} of ${state.photos.length} from Strava${where} · ${groups.length} activities · newest first · a frame per activity` : `none of the ${state.photos.length} photos match the switches above`;
+  const routeById = new Map(state.data.routes.map((r) => [r.id, r]));
+  host.replaceChildren(...groups.map((g) => {
+    const el = document.createElement("div"); el.className = "album"; el.dataset.n = String(g.photos.length);
+    const first = g.photos[0]; const route = first.workoutId ? routeById.get(first.workoutId) : null; const place = route && route.place !== null ? state.data.places.find((x) => x.index === route.place) : null;
+    const head = document.createElement("div"); head.className = "head"; const b = document.createElement("b"); b.textContent = first.activityName || label(first.activityType);
+    head.append(b, document.createTextNode(`${new Date(first.takenAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · ${label(first.activityType)}${route ? ` · ${(route.distanceMeters / 1000).toFixed(1)} km` : ""}${place ? ` · ${placeName(place) ?? "away"}` : ""}${g.photos.length > 1 ? ` · ${g.photos.length} photos` : ""}`));
+    el.append(head, ...g.photos.map(photoEl));
+    return el;
+  }));
 }
 hero.addEventListener("pointerleave", () => { drag = null; hero.classList.remove("dragging"); if (state.hover) { state.hover = null; renderHero(); } tip.dataset.show = "0"; });
 hero.addEventListener("wheel", (e) => { e.preventDefault(); const rect = hero.getBoundingClientRect(); const x = e.clientX - rect.left, y = e.clientY - rect.top; const f = Math.exp(-e.deltaY * 0.0015); state.cam = { s: state.cam.s * f, x: x - (x - state.cam.x) * f, y: y - (y - state.cam.y) * f }; renderHero(); }, { passive: false });
