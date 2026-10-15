@@ -39,12 +39,19 @@ describe("composeWeeklySummary", () => {
     expect(text).toMatch(/Capoeira\s+●\s+1\/1 ✓/);
   });
 
-  it("names what was missed on a good week", () => {
-    const good = [...perfect.filter((x) => x.activityType !== "martialarts"), w("2026-03-10T19:00:00Z", "martialarts"), w("2026-03-12T07:00:00Z", "running")];
-    const text = compose(good);
-    expect(text).toContain("✅ <b>Week of 9–15 Mar — GOOD</b>");
+  it("names what was missed on a very good week", () => {
+    const veryGood = [...perfect.filter((x) => x.activityType !== "martialarts"), w("2026-03-10T19:00:00Z", "martialarts"), w("2026-03-12T07:00:00Z", "running")];
+    const text = compose(veryGood);
+    expect(text).toContain("⭐ <b>Week of 9–15 Mar — VERY GOOD</b>");
     expect(text).toContain("missed BJJ (1/2)");
     expect(text).toContain("<i>+ Running</i>");
+  });
+
+  it("tells a good week what very good would have taken", () => {
+    const good = [w("2026-03-09T07:00:00Z", "strength"), ...["martialarts", "running", "cycling", "hiking"].map((a, i) => w(`2026-03-1${i}T19:00:00Z`, a))];
+    const text = compose(good);
+    expect(text).toContain("✅ <b>Week of 9–15 Mar — GOOD</b>");
+    expect(text).toContain("Very good needed 1 more session and 2× Strength Training.");
   });
 
   it("says how far short a short week fell", () => {

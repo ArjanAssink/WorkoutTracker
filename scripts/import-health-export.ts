@@ -16,6 +16,7 @@
 import { parseArgs } from "node:util";
 import process from "node:process";
 import { loadAthleteProfile, loadTableTarget } from "../src/config/index.js";
+import { dedupe } from "../src/domain/dedupe.js";
 import { trailingMaxHeartRate } from "../src/domain/effort.js";
 import { scoreWithReference } from "../src/domain/scoring.js";
 import { buildWorkout, WorkoutValidationError, type Workout, type WorkoutInput } from "../src/domain/workout.js";
@@ -91,6 +92,10 @@ async function main(): Promise<void> {
   const recoverySamples: RecoverySample[] = [];
   for await (const input of parseHealthExport(file, stats, { onBodyMass: (r) => readings.push(r), onRecovery: (s) => recoverySamples.push(s) })) all.push(input);
   all.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  // The same ride from the Wahoo (via Strava) and from the watch: keep one.
+  const { kept, dropped } = dedupe(all);
+  all.length = 0; all.push(...kept);
+  const duplicates = dropped.length;
   // --since only limits what is written; earlier rows still inform the reference max.
   const observations = all.map((w) => ({ startedAt: w.startedAt, maxHeartRate: w.maxHeartRate }));
 
@@ -172,6 +177,7 @@ async function main(): Promise<void> {
     console.log(`Max HR reference   : ${lowest}–${highest} bpm across the range (trailing-year observed)`);
   }
   console.log(`Workouts in export : ${stats.workoutsSeen}`);
+  if (duplicates) console.log(`Duplicates merged  : ${duplicates} (the same session recorded twice)`);
   console.log(`Parsed             : ${stats.workoutsParsed}`);
   if (filtered) console.log(`Skipped (--since)  : ${filtered}`);
   if (invalid) console.log(`Skipped (invalid)  : ${invalid}`);

@@ -7,6 +7,7 @@ import { BodyParseError, readJsonBody } from "../http/jsonBody.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
 import { extractRecovery, extractWeightReadings, HealthAutoExportError, parseHealthAutoExportBatch, type BatchResult } from "../ingest/healthAutoExport.js";
 import { dailyRecovery } from "../domain/recovery.js";
+import { dedupe, duplicatesOf } from "../domain/dedupe.js";
 import { dailyWeights } from "../domain/bodyWeight.js";
 import type { WorkoutInput } from "../domain/workout.js";
 import { announceMilestones } from "./notifyMilestones.js";
@@ -124,6 +125,24 @@ export async function ingestHealthAutoExport(
     }
   });
 
+  // One session, two recordings — the Wahoo ride via Strava beside the watch's own. Keep
+  // the better copy, within the batch and against what is already stored.
+  let merged = 0;
+  const batch = dedupe(ready); merged += batch.dropped.length;
+  let toWrite = batch.kept;
+  if (toWrite.length) {
+    const stored = await repository.listAll({ from: new Date(Math.min(...toWrite.map((w) => Date.parse(w.startedAt))) - 3_600_000), to: new Date(Math.max(...toWrite.map((w) => Date.parse(w.endedAt))) + 3_600_000) });
+    const survivors: Workout[] = [];
+    for (const w of toWrite) {
+      const { twins, incomingWins } = duplicatesOf(w, stored.filter((s) => s.id !== w.id));
+      if (!twins.length) { survivors.push(w); continue; }
+      merged++;
+      if (incomingWins) { for (const t of twins) await repository.delete(t.startedAt, t.id); survivors.push(w); }
+    }
+    toWrite = survivors;
+  }
+  ready.length = 0; ready.push(...toWrite);
+
   try {
     const written = await repository.upsertMany(ready);
     // The batch re-posts the same days every morning; the milestone state keeps that quiet.
@@ -142,6 +161,7 @@ export async function ingestHealthAutoExport(
       skipped: rejected.length,
       // Bounded: a pathological batch should not produce a megabyte of error text.
       details: rejected.slice(0, 10),
+      ...(merged ? { duplicatesMerged: merged } : {}),
       ...(weightsWritten > 0 ? { weightsWritten } : {}),
     });
   } catch (error) {

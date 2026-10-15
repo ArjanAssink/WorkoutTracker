@@ -58,14 +58,22 @@ describe("reviewWeeks — verdicts", () => {
     expect(report.current!.totalSessions).toBe(6);
   });
 
-  it("calls a week good when a missed target is covered by a substitute", () => {
-    // Only one BJJ, but a run makes it five sessions.
+  it("calls a week very good when a missed target is covered by a substitute and the floors hold", () => {
+    // Only one BJJ, but a run makes it six sessions with three strength — very good, not perfect.
     const week = [...perfectWeek.filter((x) => x.activityType !== "martialarts"),
       w("2026-03-10T19:00:00Z", "martialarts"), w("2026-03-12T07:00:00Z", "running")];
     const report = reviewWeeks(week, DEFAULT_GOALS, from, to);
-    expect(report.current!.verdict).toBe("good");
+    expect(report.current!.verdict).toBe("verygood");
     expect(report.current!.targets.find((t) => t.activityType === "martialarts")!.met).toBe(false);
     expect(report.current!.otherSessions).toBe(1);
+  });
+
+  it("calls five sessions of any mix good, and six without two strength sessions merely good", () => {
+    const five = [w("2026-03-09T07:00:00Z", "strength"), ...["martialarts", "running", "cycling", "hiking"].map((a, i) => w(`2026-03-1${i}T19:00:00Z`, a))];
+    expect(reviewWeeks(five, DEFAULT_GOALS, from, to).current!.verdict).toBe("good");
+    const six = [...five, w("2026-03-14T10:00:00Z", "swimming")];
+    expect(reviewWeeks(six, DEFAULT_GOALS, from, to).current!.verdict).toBe("good"); // one strength only
+    expect(reviewWeeks([...six, w("2026-03-15T07:00:00Z", "strength")], DEFAULT_GOALS, from, to).current!.verdict).toBe("verygood");
   });
 
   it("calls a week short when the total falls below the good-week bar", () => {
@@ -79,7 +87,7 @@ describe("reviewWeeks — verdicts", () => {
     const week = Array.from({ length: 6 }, (_, i) =>
       w(new Date(Date.UTC(2026, 2, 9 + i, 7)).toISOString(), "strength"));
     const report = reviewWeeks(week, DEFAULT_GOALS, from, to);
-    expect(report.current!.verdict).toBe("good");
+    expect(report.current!.verdict).toBe("verygood"); // six sessions, the strength floor met — but never perfect
     expect(report.current!.verdict).not.toBe("perfect");
     expect(report.current!.otherSessions).toBe(3); // beyond the strength target of 3
   });

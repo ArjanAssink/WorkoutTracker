@@ -221,6 +221,7 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
   background: var(--grid);
 }
 .strip i[data-v="perfect"] { background: var(--status-good); }
+.strip i[data-v="verygood"] { background: var(--cat-3); }
 .strip i[data-v="good"]    { background: var(--series-1); }
 .strip i[data-v="short"]   { background: var(--status-warn); }
 .strip-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
@@ -228,6 +229,7 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .verdict::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--grid); }
 .verdict[data-v="perfect"]::before { background: var(--status-good); }
+.verdict[data-v="verygood"]::before { background: var(--cat-3); }
 .verdict[data-v="good"]::before    { background: var(--series-1); }
 .verdict[data-v="short"]::before   { background: var(--status-warn); }
 .dots { font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: 1px; }
@@ -238,7 +240,7 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
    verdict as the left edge, targets as chips, totals on one line. Same data, no table. */
 .goal-list { display: none; }
 .week-card { border: 1px solid var(--border); border-left: 4px solid var(--grid); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
-.week-card[data-v="perfect"] { border-left-color: var(--status-good); } .week-card[data-v="good"] { border-left-color: var(--series-1); } .week-card[data-v="short"] { border-left-color: var(--status-warn); }
+.week-card[data-v="perfect"] { border-left-color: var(--status-good); } .week-card[data-v="verygood"] { border-left-color: var(--cat-3); } .week-card[data-v="good"] { border-left-color: var(--series-1); } .week-card[data-v="short"] { border-left-color: var(--status-warn); }
 .week-card.week-now { background: var(--hover-wash); }
 .week-card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .week-card .when { font-weight: 600; } .week-card .total { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -361,6 +363,7 @@ tbody tr:last-child td { border-bottom: 0; }
       <div class="strip" id="goal-strip"></div>
       <div class="strip-legend">
         <span><i style="background:var(--status-good)"></i>Perfect — every target hit</span>
+        <span><i style="background:var(--cat-3)"></i>Very good — 6+ sessions, 2+ strength</span>
         <span><i style="background:var(--series-1)"></i>Good — 5+ sessions</span>
         <span><i style="background:var(--status-warn)"></i>Short</span>
       </div>
@@ -1104,7 +1107,7 @@ function renderWeightTable() {
  * Weekly goals — the verdict strip is progress over time; the table is the detail.
  * ------------------------------------------------------------------ */
 
-const VERDICT_LABEL = { perfect: "Perfect", good: "Good", short: "Short" };
+const VERDICT_LABEL = { perfect: "Perfect", verygood: "Very good", good: "Good", short: "Short" };
 
 function renderGoals() {
   const report = state.weekly;

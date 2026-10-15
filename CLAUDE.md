@@ -64,6 +64,7 @@ npm run rescore -- --dry-run           # after any scoring change; then without 
 npm run lifts -- <workbook.xlsx> --as-of YYYY-MM-DD   # the long-term lift workbook
 npm run block -- <weekly-log.xlsx> --program "Name"    # a block's weekly log; re-runs are upserts
 npm run add -- sessions.csv            # manual workout backfill
+npm run dedupe -- --dry-run            # the same session recorded twice (Wahoo + watch)
 WORKOUT_KEY=$(…) node scripts/dev/screenshot.cjs "$WORKOUTS_URL/api/strength" out.png dark
 ```
 
@@ -107,8 +108,10 @@ against every other, and relabelling a slug changes identity.
 
 ## Model decisions (the person's numbers stay out of the repo)
 
-- Weekly targets per activity live in `WEEKLY_GOALS` / `GOOD_WEEK_SESSIONS` (app settings);
-  "perfect" and "good" are separate tests. Apple Watch has no BJJ/Capoeira type: BJJ is
+- Weekly targets per activity live in `WEEKLY_GOALS` / `GOOD_WEEK_SESSIONS` /
+  `VERY_GOOD_WEEK_SESSIONS` / `VERY_GOOD_WEEK_MIN` (app settings). The ladder: perfect =
+  every target; very good = 6+ sessions of any kind with 2+ strength; good = 5+ of any
+  kind; short. Any activity counts for good/very good; only targets count for perfect. Apple Watch has no BJJ/Capoeira type: BJJ is
   recorded as Martial Arts, Capoeira as Tai Chi; `PERSONAL_OVERRIDES` relabels on the way
   out. Strava "Other" ≥60 min and "Wrestling" are BJJ (`relabelActivity`, at parse time).
 - **Max HR is observed**, trailing year as of each workout, falling back to `ATHLETE_MAX_HR`,
@@ -327,10 +330,15 @@ malformed envelope still returns 400. Keep that asymmetry.
 - **Flex Consumption rolls a deployment out across instances.** Immediately after a deploy
   some requests hit old code and some new. Verifying a fix with a single request is
   unreliable; poll until several consecutive responses agree.
-- **Weekly goals are two independent tests — perfect (every target) and good (total
-  count).** Do not collapse them into one score; the substitution case ("missed BJJ, got a
-  run in") is the whole reason for the split. Targets come from `WEEKLY_GOALS` so they can
-  change without a deploy.
+- **Weekly goals are independent tests — perfect (every target), very good (total with
+  floors), good (total).** Do not collapse them into one score; the substitution case
+  ("missed BJJ, got a run in") is the whole reason for the split. Targets come from
+  `WEEKLY_GOALS` so they can change without a deploy.
+- **The same session recorded twice is one workout** (`domain/dedupe.ts`): same activity,
+  starts within 15 min, overlap ≥60% of the shorter — the Wahoo ride via Strava beside the
+  watch's own. HR wins, then length, then first recorded. Applied in the import, both
+  ingest paths, and `npm run dedupe` for the table. Derived ids cannot catch this — the
+  seconds differ — so never rely on the id alone for "already have it".
 - **The weekly timer fires at 08:00 and 09:00 UTC and checks the Amsterdam hour itself**,
   because Linux Flex Consumption ignores `WEBSITE_TIME_ZONE`. `GET /api/notify/weekly`
   previews the message; never wait a week to find out it is wrong. The Thursday check-in

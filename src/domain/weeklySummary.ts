@@ -12,6 +12,7 @@ import type { WeeklyReport, WeekReview } from "./goals.js";
 
 const VERDICT = {
   perfect: { word: "PERFECT", emoji: "🏆" },
+  verygood: { word: "VERY GOOD", emoji: "⭐" },
   good: { word: "GOOD", emoji: "✅" },
   short: { word: "SHORT", emoji: "⚠️" },
 } as const;
@@ -57,7 +58,7 @@ export function composeWeeklySummary(report: WeeklyReport): string {
   // The run of recent weeks, oldest first, so the trend is visible at a glance.
   const history = report.weeks.slice(-8);
   if (history.length > 1) {
-    const glyphs = history.map((w) => (w.verdict === "perfect" ? "▲" : w.verdict === "good" ? "■" : "·")).join(" ");
+    const glyphs = history.map((w) => (w.verdict === "perfect" ? "▲" : w.verdict === "verygood" ? "◆" : w.verdict === "good" ? "■" : "·")).join(" ");
     const good = history.filter((w) => w.verdict !== "short").length;
     const perfect = history.filter((w) => w.verdict === "perfect").length;
     lines.push(
@@ -88,12 +89,22 @@ function verdictLine(week: WeekReview, report: WeeklyReport): string {
   switch (week.verdict) {
     case "perfect":
       return "Every target hit. That is the week you were aiming for.";
-    case "good":
+    case "verygood":
       return (
-        `Good week — ${report.spec.goodWeekSessions}+ sessions, but missed ` +
+        `Very good week — ${report.spec.veryGoodWeekSessions}+ sessions with the minimums met, but missed ` +
         missed.map((t) => `${escape(t.label)} (${t.actual}/${t.sessions})`).join(", ") +
         "."
       );
+    case "good": {
+      const floors = report.spec.veryGoodWeekMinimums.filter((m) => (week.sessionsByActivity[m.activityType] ?? 0) < m.sessions).map((m) => `${m.sessions}× ${escape(displayName(m.activityType))}`);
+      const gap = report.spec.veryGoodWeekSessions - week.totalSessions;
+      const toVeryGood = [gap > 0 ? `${gap} more session${gap === 1 ? "" : "s"}` : "", ...floors].filter(Boolean).join(" and ");
+      return (
+        `Good week — ${report.spec.goodWeekSessions}+ sessions, but missed ` +
+        missed.map((t) => `${escape(t.label)} (${t.actual}/${t.sessions})`).join(", ") +
+        `.${toVeryGood ? ` Very good needed ${toVeryGood}.` : ""}`
+      );
+    }
     case "short": {
       const gap = report.spec.goodWeekSessions - week.totalSessions;
       return `Short by ${gap} session${gap === 1 ? "" : "s"} of a good week. Missed ` +

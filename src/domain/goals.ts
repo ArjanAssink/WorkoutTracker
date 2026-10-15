@@ -20,6 +20,10 @@ export interface GoalSpec {
   targets: GoalTarget[];
   /** Sessions needed for a "good" week when the per-activity targets are not all met. */
   goodWeekSessions: number;
+  /** Sessions needed for a "very good" week — any mix, provided `veryGoodWeekMinimums` are met. */
+  veryGoodWeekSessions: number;
+  /** Per-activity floors a very good week must clear, e.g. two strength sessions. */
+  veryGoodWeekMinimums: GoalTarget[];
 }
 
 export const DEFAULT_GOALS: GoalSpec = {
@@ -29,6 +33,8 @@ export const DEFAULT_GOALS: GoalSpec = {
     { activityType: "taichi", sessions: 1 }, // Capoeira
   ],
   goodWeekSessions: 5,
+  veryGoodWeekSessions: 6,
+  veryGoodWeekMinimums: [{ activityType: "strength", sessions: 2 }],
 };
 
 /**
@@ -48,7 +54,13 @@ export function parseGoalTargets(raw: string | undefined): GoalTarget[] {
   return targets.length > 0 ? targets : DEFAULT_GOALS.targets;
 }
 
-export type Verdict = "perfect" | "good" | "short";
+/**
+ * The ladder, top down: perfect — every target hit; very good — enough sessions of any
+ * kind with the minimums met (six, two of them strength); good — enough sessions of any
+ * kind; short. A ride, a hike or a swim counts for good and very good; only the named
+ * targets count for perfect.
+ */
+export type Verdict = "perfect" | "verygood" | "good" | "short";
 
 export interface TargetProgress extends GoalTarget {
   label: string;
@@ -190,13 +202,16 @@ function toReview(
   const totalSessions = [...week.counts.values()].reduce((a, b) => a + b, 0);
   const targeted = targets.reduce((sum, t) => sum + Math.min(t.actual, t.sessions), 0);
 
-  // Perfect is strictly every target met. Good is a total that shows up regardless of mix —
-  // these are separate tests, so a substituted session still counts for one and not the other.
+  // Perfect is strictly every target met. The other rungs are totals regardless of mix —
+  // separate tests, so a substituted session still counts for one and not the other.
+  const minimumsMet = spec.veryGoodWeekMinimums.every((m) => (week.counts.get(m.activityType) ?? 0) >= m.sessions);
   const verdict: Verdict = targets.every((t) => t.met)
     ? "perfect"
-    : totalSessions >= spec.goodWeekSessions
-      ? "good"
-      : "short";
+    : totalSessions >= spec.veryGoodWeekSessions && minimumsMet
+      ? "verygood"
+      : totalSessions >= spec.goodWeekSessions
+        ? "good"
+        : "short";
 
   return {
     weekStart,

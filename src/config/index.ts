@@ -77,11 +77,15 @@ export function loadTableTarget(env: NodeJS.ProcessEnv = process.env): TableTarg
  * Weekly goals, editable as app settings so they can change without a deploy:
  *   WEEKLY_GOALS=strength:3,martialarts:2,taichi:1
  *   GOOD_WEEK_SESSIONS=5
+ *   VERY_GOOD_WEEK_SESSIONS=6
+ *   VERY_GOOD_WEEK_MIN=strength:2
  */
 export function loadGoals(env: NodeJS.ProcessEnv = process.env): GoalSpec {
   return {
     targets: parseGoalTargets(env["WEEKLY_GOALS"]),
     goodWeekSessions: num("GOOD_WEEK_SESSIONS", env, DEFAULT_GOALS.goodWeekSessions),
+    veryGoodWeekSessions: num("VERY_GOOD_WEEK_SESSIONS", env, DEFAULT_GOALS.veryGoodWeekSessions),
+    veryGoodWeekMinimums: env["VERY_GOOD_WEEK_MIN"]?.trim() ? parseGoalTargets(env["VERY_GOOD_WEEK_MIN"]) : DEFAULT_GOALS.veryGoodWeekMinimums,
   };
 }
 

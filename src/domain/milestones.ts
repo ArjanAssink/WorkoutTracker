@@ -53,23 +53,31 @@ export function detectMilestones(ctx: MilestoneContext): Milestone[] {
   const toGo = missing.map((t) => `${t.sessions - t.actual}× ${escape(t.label)}`).join(", ");
   const streak = ctx.streakWeeks > 1 ? ` That makes ${ctx.streakWeeks} good weeks in a row.` : "";
 
+  const floors = ctx.spec.veryGoodWeekMinimums.filter((m) => (week.sessionsByActivity[m.activityType] ?? 0) < m.sessions).map((m) => `${m.sessions - (week.sessionsByActivity[m.activityType] ?? 0)}× ${escape(displayName(m.activityType))}`);
+  const moreForVeryGood = Math.max(0, ctx.spec.veryGoodWeekSessions - week.totalSessions);
   if (week.verdict === "perfect") {
     out.push({
       key: "perfect",
-      implies: ["good", "volume", ...ctx.spec.targets.map((t) => `target:${t.activityType}`)],
+      implies: ["verygood", "good", "volume", ...ctx.spec.targets.map((t) => `target:${t.activityType}`)],
       text: `🏆 <b>Perfect week</b> — every target hit${by}, ${week.totalSessions} sessions.${streak}`,
     });
+  } else if (week.verdict === "verygood") {
+    out.push({
+      key: "verygood",
+      implies: ["good", "volume"],
+      text: `⭐ <b>Very good week</b> — ${week.totalSessions} sessions${by}, minimums met.${streak} Still open for a perfect one: ${toGo}.`,
+    });
   } else if (week.verdict === "good") {
+    const toVeryGood = [moreForVeryGood ? `${moreForVeryGood} more session${moreForVeryGood === 1 ? "" : "s"}` : "", ...floors].filter(Boolean).join(" and ");
     out.push({
       key: "good",
-      text: `✅ <b>Good week</b> — ${week.totalSessions} sessions${by}.${streak} Still open for a perfect one: ${toGo}.`,
+      text: `✅ <b>Good week</b> — ${week.totalSessions} sessions${by}.${streak} Very good needs ${toVeryGood}; perfect still needs ${toGo}.`,
     });
-    // More sessions than a perfect week needs, just not the shape of one.
-    const perfectNeeds = ctx.spec.targets.reduce((n, t) => n + t.sessions, 0);
-    if (week.totalSessions >= perfectNeeds) {
+    // Enough sessions for a very good week, just not its shape.
+    if (!moreForVeryGood && floors.length) {
       out.push({
         key: "volume",
-        text: `🧩 ${week.totalSessions} sessions — a perfect week's worth, just not its shape: ${toGo} missing.`,
+        text: `🧩 ${week.totalSessions} sessions — enough for a very good week, just not its shape: ${floors.join(", ")} missing.`,
       });
     }
   }
@@ -144,11 +152,14 @@ export function composeCheckIn(week: WeekReview, spec: GoalSpec, now: Date, time
   const lines: string[] = [];
 
   lines.push(`📍 <b>${today} check-in — week of ${weekLabel(week.weekStart)}</b>`);
-  const gap = spec.goodWeekSessions - week.totalSessions;
+  const gap = spec.goodWeekSessions - week.totalSessions, gapVery = spec.veryGoodWeekSessions - week.totalSessions;
+  const floors = spec.veryGoodWeekMinimums.filter((m) => (week.sessionsByActivity[m.activityType] ?? 0) < m.sessions).map((m) => `${m.sessions - (week.sessionsByActivity[m.activityType] ?? 0)}× ${escape(displayName(m.activityType))}`);
+  const standing = week.verdict === "verygood" ? " — very good week locked in."
+    : gap > 0 ? ` — ${gap} more for a good week, ${daysLeft} day${daysLeft === 1 ? "" : "s"} left.`
+    : ` — good week locked in; very good needs ${[gapVery > 0 ? `${gapVery} more` : "", ...floors].filter(Boolean).join(" and ") || "nothing more"}.`;
   lines.push(
     `${week.totalSessions} session${week.totalSessions === 1 ? "" : "s"} so far` +
-      (typicalSessions !== undefined ? ` (a typical week ends on ${typicalSessions})` : "") +
-      (gap > 0 ? ` — ${gap} more for a good week, ${daysLeft} day${daysLeft === 1 ? "" : "s"} left.` : " — good week locked in."),
+      (typicalSessions !== undefined ? ` (a typical week ends on ${typicalSessions})` : "") + standing,
   );
   const width = Math.max(...week.targets.map((t) => t.label.length));
   const rows = week.targets.map((t) => {

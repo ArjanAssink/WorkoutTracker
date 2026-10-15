@@ -78,13 +78,20 @@ describe("detectMilestones", () => {
     expect(m!.text).toContain("by Saturday");
   });
 
-  it("notices a perfect week's worth of sessions in the wrong shape", () => {
+  it("calls six sessions with the strength floor met a very good week, and says what perfect still needs", () => {
     const six = [...perfect.filter((x) => x.activityType !== "taichi"), w("2026-03-14T10:00:00Z", "running")];
+    const ms = detectMilestones(context(six, []));
+    expect(ms.map((m) => m.key)).toEqual(["verygood", "target:strength", "target:martialarts"]);
+    expect(ms[0]!.implies).toEqual(expect.arrayContaining(["good", "volume"]));
+    expect(ms[0]!.text).toContain("1× Capoeira");
+  });
+
+  it("calls six sessions without the strength floor good, and names the missing shape", () => {
+    const six = [w("2026-03-09T07:00:00Z", "strength"), ...["martialarts", "martialarts", "running", "cycling", "hiking"].map((a, i) => w(`2026-03-1${i}T19:00:00Z`, a))];
     const ks = keys(context(six, []));
     expect(ks).toContain("good");
-    expect(ks).toContain("target:strength");
     expect(ks).toContain("volume");
-    expect(detectMilestones(context(six, [])).find((m) => m.key === "volume")!.text).toContain("1× Capoeira missing");
+    expect(detectMilestones(context(six, [])).find((m) => m.key === "volume")!.text).toContain("1× Strength Training missing");
   });
 
   it("marks streak milestones only at the listed lengths", () => {

@@ -1,5 +1,6 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
 import { config } from "../config/index.js";
+import { duplicatesOf } from "../domain/dedupe.js";
 import { scoreWithReference } from "../domain/scoring.js";
 import { buildWorkout, WorkoutValidationError } from "../domain/workout.js";
 import { isAuthorised } from "../http/auth.js";
@@ -39,6 +40,14 @@ export async function postWorkout(request: HttpRequest, context: InvocationConte
     const observedMax = await observedMaxResolver(repository, [input]);
     const workout = buildWorkout(input, (w) => scoreWithReference(w, settings.profile, observedMax(w)));
 
+    // The watch's copy of a ride the Wahoo already sent (or the reverse): keep the better one.
+    const stored = await repository.listAll({ from: new Date(Date.parse(workout.startedAt) - 3_600_000), to: new Date(Date.parse(workout.endedAt) + 3_600_000) });
+    const { twins, incomingWins } = duplicatesOf(workout, stored.filter((s) => s.id !== workout.id));
+    if (twins.length && !incomingWins) {
+      context.log(`Duplicate of ${twins[0]!.id} (${twins[0]!.sourceName ?? "stored"}), not stored`);
+      return ok({ status: "duplicate", workout: twins[0] });
+    }
+    for (const t of twins) await repository.delete(t.startedAt, t.id);
     const { created: isNew } = await repository.upsert(workout);
 
     context.log(

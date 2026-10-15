@@ -192,6 +192,17 @@ az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNC
   --settings WEEKLY_GOALS="strength:3,martialarts:2,taichi:1" GOOD_WEEK_SESSIONS=5
 ```
 
+The ladder has four rungs. **Perfect**: every per-activity target met. **Very good**: at
+least `VERY_GOOD_WEEK_SESSIONS` (6) sessions of *any* kind, provided the floors in
+`VERY_GOOD_WEEK_MIN` hold (`strength:2`). **Good**: at least `GOOD_WEEK_SESSIONS` (5) of
+any kind. Otherwise short. A ride, a hike or a swim counts for good and very good; only the
+named targets count for perfect.
+
+```bash
+az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNCTION_APP" \
+  --settings VERY_GOOD_WEEK_SESSIONS=6 VERY_GOOD_WEEK_MIN="strength:2"
+```
+
 The keys are the slugs Apple records — `martialarts` for BJJ, `taichi` for Capoeira — and
 the defaults above are what ships. `GET /api/weekly?weeks=12` returns each week's review,
 the **typical week** (a median over prior weeks, so one huge weekend does not skew it) and
@@ -249,10 +260,11 @@ to Telegram:
 
 | Key | When |
 | --- | --- |
-| `good` | The week reaches the good threshold; the message says what a perfect one still needs. |
+| `good` | The week reaches the good threshold; the message says what very good and perfect still need. |
+| `verygood` | The very-good threshold with its minimums met (six sessions, two of them strength). Supersedes `good`. |
 | `target:<activity>` | One target ticked off — the third strength session of the week — with what is still open. |
-| `perfect` | Every target met. Supersedes `good` and the target checkpoints. |
-| `volume` | As many sessions as a perfect week needs, but not its shape — "6 sessions, Capoeira still missing". |
+| `perfect` | Every target met. Supersedes everything below it. |
+| `volume` | Enough sessions for a very good week, but not its shape — "6 sessions, one strength session missing". |
 | `streak:N` | The week is good or perfect and makes it 4, 8, 12, 26 or 52 in a row. |
 | `effort-high` | Effort already above every completed week of the past year (needs 12 weeks of history). |
 | `max-hr:<bpm>` | A workout that just arrived beat the past year's max heart rate, within 25 bpm of `ATHLETE_MAX_HR`. |
@@ -501,6 +513,21 @@ az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNC
 What else the API offers, not wired: per-second **streams** (heart rate, pace, altitude,
 cadence, power); **best efforts** and **segment efforts** with PRs; **laps** and
 **splits**; athlete **zones** and **FTP**; **webhooks** for a push on every new activity.
+
+## One session, two recordings
+
+A ride tracked on a Wahoo reaches Health through Strava while the watch runs its own
+cycling workout; Apple keeps both, and their ids differ because the start times and
+durations differ by seconds. Two workouts of the same activity whose starts are within
+15 minutes and which overlap for at least 60 % of the shorter one are treated as one
+session: the copy with heart rate wins, then the longer, then the one recorded first. The
+rule runs in the export import, in both HTTP ingest paths (where a losing arrival is
+answered with the stored copy, and a winning one replaces it), and as a cleanup:
+
+```bash
+npm run dedupe -- --dry-run     # list what would go
+npm run dedupe                  # delete the losing copies
+```
 
 ## Rescoring history
 
