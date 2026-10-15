@@ -90,6 +90,13 @@ const ALIASES: Record<string, ActivityType> = {
   biking: "cycling",
   outdoorcycle: "cycling",
   indoorcycle: "cycling",
+  // Health Auto Export writes the long names: "Outdoor Cycling", "Outdoor Running", "Indoor Walking"…
+  outdoorcycling: "cycling",
+  indoorcycling: "cycling",
+  outdoorrunning: "running",
+  indoorrunning: "running",
+  outdoorwalking: "walking",
+  indoorwalking: "walking",
   swimming: "swimming",
   swim: "swimming",
   poolswim: "swimming",

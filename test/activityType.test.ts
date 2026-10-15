@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { displayName, metValue, normaliseActivityType, relabelActivity } from "../src/domain/activityType.js";
 
 describe("normaliseActivityType", () => {
+  it("maps Health Auto Export's long names onto the same slugs as Apple's", () => {
+    expect(normaliseActivityType("Outdoor Cycling")).toBe("cycling");
+    expect(normaliseActivityType("Indoor Cycling")).toBe("cycling");
+    expect(normaliseActivityType("Outdoor Running")).toBe("running");
+    expect(normaliseActivityType("Outdoor Walking")).toBe("walking");
+  });
   it("collapses HealthKit identifiers and Shortcuts display names onto one slug", () => {
     const expected = "running";
     for (const raw of ["HKWorkoutActivityTypeRunning", "Running", "Outdoor Run", "indoor_run", "treadmill"]) {
