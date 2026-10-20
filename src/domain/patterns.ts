@@ -31,6 +31,7 @@ interface Day {
   rhr?: number;
   hrv?: number;
   kg?: number;
+  steps?: number;
   sessions: number;
   trainingSessions: number;
   trainingMinutes: number;
@@ -56,6 +57,19 @@ export interface Patterns {
   years: Array<{ year: string; rhr?: number; hrv?: number; sleepHours?: number; deepHours?: number; kg?: number; trainingMinutesPerWeek?: number; walkMinutesPerWeek?: number; sessionsPerWeek?: number }>;
   months: Array<{ month: number; rhr?: number; hrv?: number; sleepHours?: number; kg?: number }>;
   weightWithinYear: Array<{ year: string; weeks: number; kgRhr: Corr; trainingKg: Corr; walkingKg: Corr }>;
+  /** Steps — all movement, not just logged workouts — against the rest. */
+  steps?: {
+    days: number;
+    median: number;
+    byYear: Array<{ year: string; median: number; days: number }>;
+    /** Next morning after a low / typical / high step day (tertiles of the person's own distribution). */
+    nextMorning: MorningRow[];
+    /** Mean steps on days with a training session vs without. */
+    onTrainingDays: Stat; onRestDays: Stat;
+    /** Weekly, trend removed: steps against the others; and lagged to next week. */
+    sameWeek: Record<string, Corr>; nextWeek: Record<string, Corr>;
+    weightWithinYear: Array<{ year: string; weeks: number; r: number }>;
+  };
   /** Sleep against the sun, at the home latitude: month by month and as slopes. */
   daylight: {
     latitude: number;
@@ -123,7 +137,7 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
     rows.push({
       date, dow: (new Date(t).getUTCDay() + 6) % 7,
       ...opt("asleep", r?.sleepAsleepSeconds === undefined ? undefined : r.sleepAsleepSeconds / 3600), ...opt("deep", r?.sleepDeepSeconds === undefined ? undefined : r.sleepDeepSeconds / 3600),
-      ...opt("wake", r?.sleepAwakenings), ...opt("bed", r?.bedtimeMinutes), ...opt("rhr", r?.restingHeartRate), ...opt("hrv", r?.hrv), ...opt("kg", kg.get(date)),
+      ...opt("wake", r?.sleepAwakenings), ...opt("bed", r?.bedtimeMinutes), ...opt("rhr", r?.restingHeartRate), ...opt("hrv", r?.hrv), ...opt("kg", kg.get(date)), ...opt("steps", r?.steps),
       sessions: wl.length, trainingSessions: wl.filter((w) => TRAINING_TYPES.has(w.activityType)).length,
       trainingMinutes: wl.filter((w) => TRAINING_TYPES.has(w.activityType)).reduce((n, w) => n + w.durationSeconds / 60, 0),
       walkMinutes: wl.filter((w) => w.activityType === "walking").reduce((n, w) => n + w.durationSeconds / 60, 0),
@@ -151,7 +165,7 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
 
   // Day-level deviations from the surrounding month, so a short night is short *for that time*.
   const dev = (key: keyof Day, half = 14): Array<number | undefined> => rows.map((r, i) => { const v = r[key] as number | undefined; if (v === undefined) return undefined; const win = rows.slice(Math.max(0, i - half), i + half + 1).map((x) => x[key] as number | undefined).filter((x): x is number => x !== undefined); return win.length >= 10 ? v - avg(win) : undefined; });
-  const dSleep = dev("asleep"), dRhr = dev("rhr"), dTrain = dev("trainingMinutes");
+  const dSleep = dev("asleep"), dRhr = dev("rhr"), dTrain = dev("trainingMinutes"), dSteps = dev("steps");
   const shortNight = stat(rows.map((_, i) => (dSleep[i] !== undefined && dSleep[i]! <= -1 ? dRhr[i] : undefined)));
   const longNight = stat(rows.map((_, i) => (dSleep[i] !== undefined && dSleep[i]! >= 1 ? dRhr[i] : undefined)));
 
@@ -160,11 +174,11 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
   for (const r of rows) { const d = new Date(`${r.date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); const k = d.toISOString().slice(0, 10); (weeks.get(k) ?? weeks.set(k, []).get(k)!).push(r); }
   const W = [...weeks.entries()].filter(([, xs]) => xs.length === 7).map(([week, xs]) => ({
     week, tsessions: xs.reduce((n, x) => n + x.trainingSessions, 0), tmins: xs.reduce((n, x) => n + x.trainingMinutes, 0), walk: xs.reduce((n, x) => n + x.walkMinutes, 0), effort: xs.reduce((n, x) => n + x.effort, 0),
-    rhr: avgOpt(xs.map((x) => x.rhr)), hrv: avgOpt(xs.map((x) => x.hrv)), asleep: avgOpt(xs.map((x) => x.asleep)), kg: avgOpt(xs.map((x) => x.kg)),
+    rhr: avgOpt(xs.map((x) => x.rhr)), hrv: avgOpt(xs.map((x) => x.hrv)), asleep: avgOpt(xs.map((x) => x.asleep)), kg: avgOpt(xs.map((x) => x.kg)), steps: avgOpt(xs.map((x) => x.steps)),
   }));
   type WK = keyof (typeof W)[number];
   const wdev = (key: WK, half = 6): Array<number | undefined> => W.map((w, i) => { const v = w[key] as number | undefined; if (v === undefined) return undefined; const win = W.slice(Math.max(0, i - half), i + half + 1).map((x) => x[key] as number | undefined).filter((x): x is number => x !== undefined); return win.length >= 5 ? v - avg(win) : undefined; });
-  const D = Object.fromEntries((["tsessions", "tmins", "walk", "effort", "rhr", "hrv", "asleep", "kg"] as WK[]).map((k) => [k, wdev(k)])) as Record<string, Array<number | undefined>>;
+  const D = Object.fromEntries((["tsessions", "tmins", "walk", "effort", "rhr", "hrv", "asleep", "kg", "steps"] as WK[]).map((k) => [k, wdev(k)])) as Record<string, Array<number | undefined>>;
   const sameWeek: Record<string, Corr> = {}, nextWeek: Record<string, Corr> = {};
   for (const k of ["tsessions", "tmins", "effort", "walk"]) { sameWeek[k] = pearson(D[k]!, D["rhr"]!); nextWeek[k] = pearson(D[k]!.slice(0, -1), D["rhr"]!.slice(1)); }
   const sleepToRhr = { shortNight: shortNight ?? { mean: 0, n: 0 }, longNight: longNight ?? { mean: 0, n: 0 }, weeklyR: pearson(D["asleep"]!, D["rhr"]!), dayR: pearson(dSleep, dRhr) };
@@ -180,6 +194,25 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
   }); });
   const months: Patterns["months"] = Array.from({ length: 12 }, (_, m) => { const xs = rows.filter((r) => Number(r.date.slice(5, 7)) === m + 1); return strip<Patterns["months"][number]>({ month: m + 1, rhr: avgOpt(xs.map((x) => x.rhr)), hrv: avgOpt(xs.map((x) => x.hrv)), sleepHours: avgOpt(xs.map((x) => x.asleep)), kg: avgOpt(xs.map((x) => x.kg)) }); });
   const weightWithinYear = yearsSet.map((year) => { const wk = W.filter((w) => w.week.startsWith(year)); return { year, weeks: wk.length, kgRhr: pearson(wk.map((w) => w.kg), wk.map((w) => w.rhr)), trainingKg: pearson(wk.map((w) => w.tmins), wk.map((w) => w.kg)), walkingKg: pearson(wk.map((w) => w.walk), wk.map((w) => w.kg)) }; }).filter((y) => y.weeks >= 12);
+
+  // Steps: the whole day's movement, workouts or not.
+  const stepDays = rows.filter((r) => r.steps !== undefined);
+  let steps: Patterns["steps"];
+  if (stepDays.length >= 120) {
+    const sorted = stepDays.map((r) => r.steps!).sort((a, b) => a - b);
+    const t1 = sorted[Math.floor(sorted.length / 3)]!, t2 = sorted[Math.floor((2 * sorted.length) / 3)]!;
+    const stepIdx = (f: (s: number) => boolean) => all.filter((i) => rows[i]!.steps !== undefined && f(rows[i]!.steps!));
+    steps = {
+      days: stepDays.length, median: med(sorted),
+      byYear: yearsSet.map((year) => { const v = stepDays.filter((r) => r.date.startsWith(year)).map((r) => r.steps!); return { year, median: v.length ? med(v) : 0, days: v.length }; }).filter((y) => y.days >= 30),
+      nextMorning: [morning(`Low day (< ${Math.round(t1).toLocaleString()} steps)`, stepIdx((s) => s < t1)), morning("Typical day", stepIdx((s) => s >= t1 && s < t2)), morning(`High day (≥ ${Math.round(t2).toLocaleString()} steps)`, stepIdx((s) => s >= t2))],
+      onTrainingDays: stat(rows.filter((r) => r.trainingSessions > 0).map((r) => r.steps)) ?? { mean: 0, n: 0 }, onRestDays: stat(rows.filter((r) => r.sessions === 0).map((r) => r.steps)) ?? { mean: 0, n: 0 },
+      sameWeek: { rhr: pearson(D["steps"]!, D["rhr"]!), hrv: pearson(D["steps"]!, D["hrv"]!), asleep: pearson(D["steps"]!, D["asleep"]!), kg: pearson(D["steps"]!, D["kg"]!), tmins: pearson(D["steps"]!, D["tmins"]!) },
+      nextWeek: { rhr: pearson(D["steps"]!.slice(0, -1), D["rhr"]!.slice(1)), hrv: pearson(D["steps"]!.slice(0, -1), D["hrv"]!.slice(1)), asleep: pearson(D["steps"]!.slice(0, -1), D["asleep"]!.slice(1)), kg: pearson(D["steps"]!.slice(0, -1), D["kg"]!.slice(1)) },
+      weightWithinYear: yearsSet.map((year) => { const wk = W.filter((w) => w.week.startsWith(year)); return { year, weeks: wk.length, r: pearson(wk.map((w) => w.steps), wk.map((w) => w.kg)).r }; }).filter((y) => y.weeks >= 12),
+    };
+  }
+  const stepsToRhrNext = pearson(dSteps.slice(0, -1), dRhr.slice(1)), stepsToSleep = pearson(dSteps.slice(0, -1), dSleep.slice(1));
 
   // Sleep against the sun.
   const sun = rows.map((r) => sunTimes(r.date, home.lat, home.lon, timeZone));
@@ -243,6 +276,23 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
   if (withRhr.length === 12) { const worstM = withRhr.reduce((a, b) => (a.rhr! > b.rhr! ? a : b)), bestM = withRhr.reduce((a, b) => (a.rhr! < b.rhr! ? a : b)); if (worstM.rhr! - bestM.rhr! >= 2) readings.push(`Season: resting HR runs highest in ${MONTHS[worstM.month - 1]} (${worstM.rhr!.toFixed(1)}) and lowest in ${MONTHS[bestM.month - 1]} (${bestM.rhr!.toFixed(1)}).`); }
   const wd = weekday.filter((d) => d.sleepHours && d.n >= 30);
   if (wd.length === 7) { const shortD = wd.reduce((a, b) => (a.sleepHours!.mean < b.sleepHours!.mean ? a : b)), longD = wd.reduce((a, b) => (a.sleepHours!.mean > b.sleepHours!.mean ? a : b)); if ((longD.sleepHours!.mean - shortD.sleepHours!.mean) * 60 >= 30) readings.push(`${shortD.label} night is the shortest of the week (${h(shortD.sleepHours!.mean)}${shortD.bedtimeMinutes ? `, bed ${clock(shortD.bedtimeMinutes.mean)}` : ""}); ${longD.label} night the longest (${h(longD.sleepHours!.mean)}).`); }
+  if (steps) {
+    const low = steps.nextMorning[0]!, high = steps.nextMorning[2]!;
+    const bits: string[] = [];
+    if (low.rhr && high.rhr && low.n >= 30 && Math.abs(high.rhr.mean - low.rhr.mean) >= 0.4) bits.push(`resting HR the next morning ${high.rhr.mean.toFixed(1)} after a high-step day vs ${low.rhr.mean.toFixed(1)} after a low one`);
+    if (low.sleepHours && high.sleepHours && Math.abs(high.sleepHours.mean - low.sleepHours.mean) * 60 >= 8) bits.push(`sleep ${h(high.sleepHours.mean)} vs ${h(low.sleepHours.mean)}`);
+    if (low.hrv && high.hrv && Math.abs(high.hrv.mean - low.hrv.mean) >= 1.5) bits.push(`HRV ${high.hrv.mean.toFixed(1)} vs ${low.hrv.mean.toFixed(1)}`);
+    readings.push(`Steps: median ${Math.round(steps.median).toLocaleString()} a day over ${steps.days} days${steps.byYear.length > 1 ? ` (${steps.byYear.map((y) => `${y.year} ${Math.round(y.median / 100) / 10}k`).join(", ")})` : ""}; ${Math.round(steps.onTrainingDays.mean).toLocaleString()} on training days, ${Math.round(steps.onRestDays.mean).toLocaleString()} on days with nothing. ${bits.length ? `A high-step day (top third) vs a low one: ${bits.join("; ")}.` : "The next morning looks the same after a high-step day as after a low one."}`);
+    const sk = steps.sameWeek["kg"]!, sr = steps.sameWeek["rhr"]!, sh = steps.sameWeek["hrv"]!, nk = steps.nextWeek["kg"]!, nr = steps.nextWeek["rhr"]!;
+    const wk: string[] = [];
+    if (sr.n >= 40 && Math.abs(sr.r) >= 0.1) wk.push(`resting HR ${sr.r < 0 ? "lower" : "higher"} the same week (r ${sr.r.toFixed(2)})${nr.n >= 40 && Math.abs(nr.r) >= 0.1 ? ` and ${nr.r < 0 ? "lower" : "higher"} the next (r ${nr.r.toFixed(2)})` : ""}`);
+    if (sh.n >= 40 && Math.abs(sh.r) >= 0.1) wk.push(`HRV ${sh.r > 0 ? "higher" : "lower"} (r ${sh.r.toFixed(2)})`);
+    if (sk.n >= 40 && Math.abs(sk.r) >= 0.1) wk.push(`weight ${sk.r < 0 ? "lower" : "higher"} (r ${sk.r.toFixed(2)})${nk.n >= 40 && Math.abs(nk.r) >= 0.1 ? `, and ${nk.r < 0 ? "lower" : "higher"} the week after (r ${nk.r.toFixed(2)})` : ""}`);
+    const wy = steps.weightWithinYear.slice(-2).filter((y) => Math.abs(y.r) >= 0.25);
+    if (wy.length) wk.push(`within ${wy.map((y) => y.year).join(" and ")}, step-heavy weeks are ${wy.every((y) => y.r < 0) ? "lighter" : "heavier"} weeks (r ${wy.map((y) => y.r.toFixed(2)).join(", ")})`);
+    readings.push(wk.length ? `Step-heavy weeks (trend removed): ${wk.join("; ")}.` : `Week to week, steps show no link to resting HR, HRV, sleep or weight once the long-term drift is removed (|r| < 0.1).`);
+    if (stepsToRhrNext.n >= 300 && Math.abs(stepsToRhrNext.r) < 0.1 && stepsToSleep.n >= 300 && Math.abs(stepsToSleep.r) < 0.1) readings.push(`A single day's steps do not move the next night or morning (r ${stepsToRhrNext.r.toFixed(2)} to resting HR, ${stepsToSleep.r.toFixed(2)} to sleep).`);
+  }
   const dl = daylight.months.filter((m) => m.sleepHours !== undefined && m.sleepN >= 20);
   if (dl.length >= 10) {
     const longest = dl.reduce((a, b) => (a.dayLengthHours > b.dayLengthHours ? a : b)), shortest = dl.reduce((a, b) => (a.dayLengthHours < b.dayLengthHours ? a : b));
@@ -256,7 +306,7 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
 
   return {
     span: { from: first, to: last, days: rows.length, workouts: workouts.length },
-    byDayType, byActivity, lateVsEarly, sleepToRhr, loadToRhr: { sameWeek, nextWeek }, weekday, years, months, weightWithinYear, daylight, readings,
+    byDayType, byActivity, lateVsEarly, sleepToRhr, loadToRhr: { sameWeek, nextWeek }, weekday, years, months, weightWithinYear, daylight, ...(steps ? { steps } : {}), readings,
   };
 }
 

@@ -334,8 +334,8 @@ function renderSleep() {
 }
 function renderSleepTable() {
   const rows = state.data.days.filter((d) => d.sleepAsleepSeconds !== undefined || d.restingHeartRate !== undefined).slice().reverse();
-  document.getElementById("sleep-table").replaceChildren(buildTable(["Night ending", { text: "Asleep", num: true }, { text: "Deep", num: true }, { text: "REM", num: true }, { text: "Wake-ups", num: true }, "In bed", { text: "RHR", num: true }, { text: "HRV", num: true }, { text: "Resp", num: true }],
-    rows.map((d) => [fmtDate(d.date, { weekday: "short", day: "numeric", month: "short" }), { text: hm(d.sleepAsleepSeconds), num: true }, { text: hm(d.sleepDeepSeconds), num: true }, { text: hm(d.sleepRemSeconds), num: true }, { text: d.sleepAwakenings === undefined ? "—" : `${d.sleepAwakenings}`, num: true }, d.bedtimeMinutes === undefined ? "—" : `${clock(d.bedtimeMinutes)}–${clock(d.wakeMinutes)}`, { text: d.restingHeartRate ? `${d.restingHeartRate}` : "—", num: true }, { text: d.hrv ? `${Math.round(d.hrv)}` : "—", num: true }, { text: d.respiratoryRate ? `${d.respiratoryRate}` : "—", num: true }])));
+  document.getElementById("sleep-table").replaceChildren(buildTable(["Night ending", { text: "Asleep", num: true }, { text: "Deep", num: true }, { text: "REM", num: true }, { text: "Wake-ups", num: true }, "In bed", { text: "RHR", num: true }, { text: "HRV", num: true }, { text: "Resp", num: true }, { text: "Steps", num: true }],
+    rows.map((d) => [fmtDate(d.date, { weekday: "short", day: "numeric", month: "short" }), { text: hm(d.sleepAsleepSeconds), num: true }, { text: hm(d.sleepDeepSeconds), num: true }, { text: hm(d.sleepRemSeconds), num: true }, { text: d.sleepAwakenings === undefined ? "—" : `${d.sleepAwakenings}`, num: true }, d.bedtimeMinutes === undefined ? "—" : `${clock(d.bedtimeMinutes)}–${clock(d.wakeMinutes)}`, { text: d.restingHeartRate ? `${d.restingHeartRate}` : "—", num: true }, { text: d.hrv ? `${Math.round(d.hrv)}` : "—", num: true }, { text: d.respiratoryRate ? `${d.respiratoryRate}` : "—", num: true }, { text: d.steps !== undefined ? Math.round(d.steps).toLocaleString() : "—", num: true }])));
 }
 
 /* ---- a daily series with its 28-day baseline: one chart each, never a dual axis ---- */
@@ -413,6 +413,7 @@ function renderSmalls() {
     ["Wrist temperature", (d) => d.wristTemperature, "°C", undefined, (v) => v.toFixed(2), (d) => d.wristTemperatureBaseline],
     ["Breathing disturbances", (d) => d.breathingDisturbances, "/night", undefined, (v) => v.toFixed(1)],
     ["Time in daylight", (d) => d.daylightMinutes, "min", undefined, (v) => `${Math.round(v)}`],
+    ["Steps", (d) => d.steps, "", undefined, (v) => Math.round(v).toLocaleString()],
   ];
   host.replaceChildren(...defs.map(([label, pick, unit, typ, fmt, base]) => {
     const pts = days.map((d) => ({ d, v: pick(d) })).filter((p) => p.v !== undefined);
@@ -467,6 +468,11 @@ async function loadPatterns() {
     section("Season and daylight", `sunrise, sunset and day length at ${p.daylight.latitude.toFixed(1)}°N against sleep · sleep ↔ day length r ${p.daylight.sleepVsDayLength.r.toFixed(2)} · wake vs sunrise slope ${p.daylight.wakeVsSunrise.slope.toFixed(2)} · bedtime vs sunset slope ${p.daylight.bedtimeVsSunset.slope.toFixed(2)}`,
       ["month", { text: "daylight", num: true }, { text: "sunrise", num: true }, { text: "sunset", num: true }, { text: "sleep", num: true }, { text: "bed", num: true }, { text: "wake", num: true }, { text: "RHR", num: true }],
       p.daylight.months.map((m, i) => [MN[i], { text: `${m.dayLengthHours.toFixed(1)} h`, num: true }, { text: clock(m.sunriseMinutes), num: true }, { text: clock(m.sunsetMinutes), num: true }, m.sleepHours !== undefined ? { text: hm(m.sleepHours * 3600), num: true } : { text: "—", num: true }, m.bedtimeMinutes !== undefined ? { text: clock(m.bedtimeMinutes), num: true } : { text: "—", num: true }, m.wakeMinutes !== undefined ? { text: clock(m.wakeMinutes), num: true } : { text: "—", num: true }, { text: p.months[i].rhr !== undefined ? p.months[i].rhr.toFixed(1) : "—", num: true }]));
+    if (p.steps) {
+      section("Steps → the next morning", `all movement, workouts or not · median ${Math.round(p.steps.median).toLocaleString()} a day over ${p.steps.days} days · ${Math.round(p.steps.onTrainingDays.mean).toLocaleString()} on training days, ${Math.round(p.steps.onRestDays.mean).toLocaleString()} on days with nothing`, mh, morningRows(p.steps.nextMorning));
+      section("Steps, week by week", `trend removed · n=${p.steps.sameWeek.rhr.n} weeks` + (p.steps.byYear.length > 1 ? ` · medians by year: ${p.steps.byYear.map((y) => `${y.year} ${Math.round(y.median).toLocaleString()}`).join(", ")}` : ""), ["", { text: "same week", num: true }, { text: "next week", num: true }],
+        [["resting HR", c(p.steps.sameWeek.rhr), c(p.steps.nextWeek.rhr)], ["HRV", c(p.steps.sameWeek.hrv), c(p.steps.nextWeek.hrv)], ["sleep", c(p.steps.sameWeek.asleep), c(p.steps.nextWeek.asleep)], ["weight", c(p.steps.sameWeek.kg), c(p.steps.nextWeek.kg)], ["training minutes", c(p.steps.sameWeek.tmins), { text: "", num: true }], ...p.steps.weightWithinYear.map((y) => [`weight within ${y.year} (raw)`, c({ r: y.r }), { text: "", num: true }])]);
+    }
     if (p.weightWithinYear.length) section("Weight, within each year", "weekly means; r between weight and the others, so the year-to-year drift does not count", ["year", { text: "weeks", num: true }, { text: "kg ↔ RHR", num: true }, { text: "training ↔ kg", num: true }, { text: "walking ↔ kg", num: true }],
       p.weightWithinYear.map((y) => [y.year, { text: `${y.weeks}`, num: true }, c(y.kgRhr), c(y.trainingKg), c(y.walkingKg)]));
   } catch { card.hidden = true; }

@@ -115,7 +115,7 @@ export function extractRecovery(body: unknown): { samples: RecoverySample[]; nig
   const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
   const QUANTITIES: Array<[RegExp, RecoveryMetric]> = [
     [/resting_?heart_?rate/, "restingHeartRate"], [/heart_?rate_?variability|hrv/, "hrv"], [/respiratory/, "respiratoryRate"],
-    [/oxygen|spo2/, "spo2"], [/wrist_?temp/, "wristTemperature"], [/breathing_?disturb/, "breathingDisturbances"], [/daylight/, "daylight"],
+    [/oxygen|spo2/, "spo2"], [/wrist_?temp/, "wristTemperature"], [/breathing_?disturb/, "breathingDisturbances"], [/daylight/, "daylight"], [/^step_?count$|^steps$/, "steps"],
   ];
   for (const metric of metrics) {
     if (typeof metric !== "object" || metric === null) continue;

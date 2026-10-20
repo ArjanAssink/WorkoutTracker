@@ -18,7 +18,7 @@ export type SleepStage = "inBed" | "asleep" | "core" | "deep" | "rem" | "awake";
 
 export type RecoveryMetric =
   | "sleep" | "restingHeartRate" | "hrv" | "respiratoryRate" | "spo2"
-  | "wristTemperature" | "breathingDisturbances" | "daylight";
+  | "wristTemperature" | "breathingDisturbances" | "daylight" | "steps";
 
 /** A raw record as the sources give it; `stage` only for sleep. */
 export interface RecoverySample {
@@ -72,6 +72,8 @@ export interface RecoveryDay {
   wristTemperature?: number;
   breathingDisturbances?: number;
   daylightMinutes?: number;
+  /** Steps that day: the highest single-source total (watch and phone both count, overlapping). */
+  steps?: number;
   source: RecoverySource;
   recordedAt: string;
 }
@@ -121,6 +123,9 @@ export function dailyRecovery(
   const day = (date: string): Partial<RecoveryDay> => days.get(date) ?? days.set(date, {}).get(date)!;
   const nights = new Map<string, NightBuild>();
   const means = new Map<string, { sum: number; n: number }>();
+  // Steps come from the watch and the phone at once, each counting the same walk; the
+  // day's figure is the largest single source, which is close to what Health shows.
+  const stepsBySource = new Map<string, Map<string, number>>();
   const mean = (key: string, value: number) => { const m = means.get(key) ?? { sum: 0, n: 0 }; m.sum += value; m.n += 1; means.set(key, m); };
 
   for (const s of input.samples ?? []) {
@@ -141,6 +146,7 @@ export function dailyRecovery(
       case "wristTemperature": { const d = nightOf(s.start); if (d && s.value > 30 && s.value < 42) day(d).wristTemperature = Math.round(s.value * 100) / 100; break; }
       case "breathingDisturbances": { const d = nightOf(s.start); if (d && s.value >= 0) day(d).breathingDisturbances = Math.round(s.value * 10) / 10; break; }
       case "daylight": { const d = localDay(s.start); if (d && s.value >= 0) day(d).daylightMinutes = (day(d).daylightMinutes ?? 0) + s.value; break; }
+      case "steps": { const d = localDay(s.start); if (d && s.value >= 0) { const src = stepsBySource.get(d) ?? stepsBySource.set(d, new Map()).get(d)!; const k = s.sourceName ?? ""; src.set(k, (src.get(k) ?? 0) + s.value); } break; }
     }
   }
 
@@ -151,6 +157,8 @@ export function dailyRecovery(
     else if (metric === "resp") day(date).respiratoryRate = Math.round(v * 10) / 10;
     else if (metric === "spo2") day(date).spo2 = Math.round(v * 10) / 10;
   }
+
+  for (const [date, src] of stepsBySource) { const best = Math.max(...src.values()); if (best > 0) day(date).steps = Math.round(best); }
 
   for (const [date, night] of nights) {
     const summary = summariseNight(night);

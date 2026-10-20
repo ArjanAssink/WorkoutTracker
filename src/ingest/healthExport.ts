@@ -137,6 +137,7 @@ const RECOVERY_TYPES: Record<string, RecoveryMetric> = {
   HKQuantityTypeIdentifierAppleSleepingWristTemperature: "wristTemperature",
   HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances: "breathingDisturbances",
   HKQuantityTypeIdentifierTimeInDaylight: "daylight",
+  HKQuantityTypeIdentifierStepCount: "steps",
 };
 
 const SLEEP_STAGES: Record<string, SleepStage> = {

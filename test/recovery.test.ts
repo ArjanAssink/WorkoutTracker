@@ -83,6 +83,13 @@ describe("dailyRecovery — the daytime and overnight quantities", () => {
     const d = days[0]!;
     expect(d).toMatchObject({ date: "2026-10-08", restingHeartRate: 57, hrv: 50, hrvSamples: 2, respiratoryRate: 15, spo2: 97, wristTemperature: 36.41, daylightMinutes: 10 });
   });
+  it("takes the largest single source for the day's steps, never the sum of watch and phone", () => {
+    const [d] = dailyRecovery({ samples: [
+      { metric: "steps", start: "2026-10-07 08:04:41 +0200", end: "2026-10-07 08:05:34 +0200", value: 26, sourceName: "Watch" }, { metric: "steps", start: "2026-10-07 09:00:00 +0200", end: "2026-10-07 09:10:00 +0200", value: 9177, sourceName: "Watch" },
+      { metric: "steps", start: "2026-10-07 08:04:00 +0200", end: "2026-10-07 09:00:00 +0200", value: 8844, sourceName: "iPhone" },
+    ] }, "health-export");
+    expect(d!.steps).toBe(9203);
+  });
   it("rejects implausible values rather than storing a glitch", () => {
     expect(dailyRecovery({ samples: [q("restingHeartRate", "2026-10-08 00:18:00 +0200", 300)] }, "health-export")).toEqual([]);
   });
@@ -131,13 +138,14 @@ describe("extractRecovery — Health Auto Export metrics", () => {
       { name: "heart_rate_variability", units: "ms", data: [{ date: "2026-10-08 03:18:00 +0200", qty: 48.2 }] },
       { name: "blood_oxygen_saturation", units: "%", data: [{ date: "2026-10-08 10:00:00 +0200", qty: 97 }] },
       { name: "step_count", units: "count", data: [{ date: "2026-10-08 10:00:00 +0200", qty: 9000 }] },
+      { name: "flights_climbed", units: "count", data: [{ date: "2026-10-08 10:00:00 +0200", qty: 12 }] },
     ] } };
     const { samples, nights } = extractRecovery(body);
     expect(nights).toHaveLength(1);
     expect(nights[0]).toMatchObject({ asleepHours: 7, deepHours: 0.8, sourceName: "Watch" });
-    expect(samples.map((s) => s.metric)).toEqual(["restingHeartRate", "hrv", "spo2"]);
+    expect(samples.map((s) => s.metric)).toEqual(["restingHeartRate", "hrv", "spo2", "steps"]);
     const [d] = dailyRecovery(extractRecovery(body), "health-auto-export");
-    expect(d).toMatchObject({ date: "2026-10-08", restingHeartRate: 57, hrv: 48.2, spo2: 97, sleepAsleepSeconds: 25200 });
+    expect(d).toMatchObject({ date: "2026-10-08", restingHeartRate: 57, hrv: 48.2, spo2: 97, sleepAsleepSeconds: 25200, steps: 9000 });
   });
   it("reads a real watch night where `asleep` is the unspecified stage and `totalSleep` the total", () => {
     const body = { data: { metrics: [{ name: "sleep_analysis", units: "hr", data: [{ date: "2026-10-12 00:00:00 +0200", asleep: 0, totalSleep: 7.42, core: 4.9, deep: 0.7, rem: 1.82, awake: 0.12, inBed: 7.6, sleepStart: "2026-10-11 23:20:00 +0200", sleepEnd: "2026-10-12 06:52:00 +0200", inBedStart: "2026-10-11 23:10:00 +0200", inBedEnd: "2026-10-12 06:55:00 +0200", source: "Watch" }] }] } };

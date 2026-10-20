@@ -434,6 +434,9 @@ Decisions worth knowing:
   a week of them exists. The page reads today against that, not against a population norm.
 - HRV is the day's mean of Apple's SDNN samples (several a day, most overnight);
   respiratory rate, wrist temperature and breathing disturbances file under the morning.
+- **Steps** are the largest single source's total for the day. The watch and the phone both
+  count the same walk; summing them would double it, and the largest source is within a
+  few percent of what the Health app shows.
 
 ### Patterns
 
@@ -444,7 +447,10 @@ the next morning by what the day held (nothing / walks only / one session / two 
 ≥ 90 min), by activity, late vs early sessions, day of the week, training load against
 resting HR in the same week and the week after, sleep against resting HR, year by year,
 season and daylight (sunrise, sunset and day length at your home latitude against sleep,
-bedtime and wake time), and weight within each year.
+bedtime and wake time), weight within each year, and **steps** — all movement, not just
+logged workouts: the next morning after a low / typical / high step day (tertiles of your
+own distribution), steps on training days vs days with nothing, and step-heavy weeks
+against resting HR, HRV, sleep and weight, same week and next.
 
 Three habits keep it honest, in `src/domain/patterns.ts`: walks are kept apart from
 training (the watch auto-detects them, twenty a week in some years); weekly correlations
