@@ -83,7 +83,7 @@ export function loadTableTarget(env: NodeJS.ProcessEnv = process.env): TableTarg
  *   VERY_GOOD_WEEK_SESSIONS=6
  *   VERY_GOOD_WEEK_MIN=strength:2
  *   WEEKLY_GOALS_FROM=2026-04-27            when the current goals began (default: always)
- *   WEEKLY_GOALS_HISTORY=[{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2"}, …]
+ *   WEEKLY_GOALS_HISTORY=[{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2","exclude":"walking"}, …]
  * Earlier weeks are judged by the history period in force; before the first period, by the first.
  */
 export function loadGoalSchedule(env: NodeJS.ProcessEnv = process.env): GoalSchedule {
@@ -104,6 +104,7 @@ export function loadGoalSchedule(env: NodeJS.ProcessEnv = process.env): GoalSche
         goodWeekSessions: typeof p["good"] === "number" ? p["good"] : current.goodWeekSessions,
         veryGoodWeekSessions: typeof p["veryGood"] === "number" ? p["veryGood"] : current.veryGoodWeekSessions,
         veryGoodWeekMinimums: typeof p["veryGoodMin"] === "string" ? (p["veryGoodMin"].trim() ? parseGoalTargets(p["veryGoodMin"]) : []) : current.veryGoodWeekMinimums,
+        ...(typeof p["exclude"] === "string" && p["exclude"].trim() ? { excludeFromCount: p["exclude"].split(",").map((x) => x.trim()).filter(Boolean) } : {}),
       });
     }
   }

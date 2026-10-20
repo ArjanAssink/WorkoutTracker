@@ -24,6 +24,8 @@ export interface GoalSpec {
   veryGoodWeekSessions: number;
   /** Per-activity floors a very good week must clear, e.g. two strength sessions. */
   veryGoodWeekMinimums: GoalTarget[];
+  /** Activities that do not count towards the totals — the watch's auto-detected walks in the early years. */
+  excludeFromCount?: string[];
 }
 
 /** A goal spec in force from a date. Weeks are judged by the spec in force when they happened. */
@@ -230,7 +232,8 @@ function toReview(
     };
   });
 
-  const totalSessions = [...week.counts.values()].reduce((a, b) => a + b, 0);
+  const excluded = new Set(spec.excludeFromCount ?? []);
+  const totalSessions = [...week.counts.entries()].filter(([a]) => !excluded.has(a)).reduce((n, [, c]) => n + c, 0);
   const targeted = targets.reduce((sum, t) => sum + Math.min(t.actual, t.sessions), 0);
 
   // Perfect is strictly every target met. The other rungs are totals regardless of mix —

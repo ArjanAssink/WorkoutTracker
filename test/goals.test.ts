@@ -251,6 +251,14 @@ describe("goals in force at the time", () => {
     const before = reviewWeeks([], schedule, new Date("2021-06-07T00:00:00Z"), new Date("2021-06-14T00:00:00Z"));
     expect(before.current!.goodWeekSessions).toBe(4);
   });
+  it("leaves excluded activities out of the totals, so a week of auto-detected walks is not good by count", () => {
+    const walksOnly = { targets: [{ activityType: "strength", sessions: 3 }], goodWeekSessions: 4, veryGoodWeekSessions: 5, veryGoodWeekMinimums: [], excludeFromCount: ["walking"] };
+    const week = [...Array.from({ length: 20 }, (_, i) => w(`2026-03-${String(9 + (i % 7)).padStart(2, "0")}T${String(8 + Math.floor(i / 7)).padStart(2, "0")}:00:00Z`, "walking")), w("2026-03-10T19:00:00Z", "strength")];
+    const report = reviewWeeks(week, walksOnly, from, to);
+    expect(report.current!.totalSessions).toBe(1);
+    expect(report.current!.verdict).toBe("short");
+  });
+
   it("never calls a week with no targets perfect", () => {
     const none = { targets: [], goodWeekSessions: 3, veryGoodWeekSessions: 5, veryGoodWeekMinimums: [] };
     const report = reviewWeeks([w("2026-03-09T07:00:00Z", "walking"), w("2026-03-10T07:00:00Z", "walking"), w("2026-03-11T07:00:00Z", "cycling")], none, from, to);

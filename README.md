@@ -197,14 +197,16 @@ az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNC
 changing the goals never rewrites history. `WEEKLY_GOALS` / `GOOD_WEEK_SESSIONS` /
 `VERY_GOOD_WEEK_SESSIONS` / `VERY_GOOD_WEEK_MIN` are the current goals, from
 `WEEKLY_GOALS_FROM`; earlier periods go in `WEEKLY_GOALS_HISTORY`, a JSON array of
-`{from, targets, good, veryGood, veryGoodMin}` (missing fields inherit the current
-values; empty `targets` means the week is judged on counts alone and can never be perfect):
+`{from, targets, good, veryGood, veryGoodMin, exclude}` (missing fields inherit the
+current values; empty `targets` means the week is judged on counts alone and can never be
+perfect; `exclude` names activities that do not count towards the totals — the watch's
+auto-detected walks, twenty a week in the early years, would otherwise make every week good):
 
 ```bash
 az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNCTION_APP" --settings \
   WEEKLY_GOALS_FROM=2026-04-27 \
-  WEEKLY_GOALS_HISTORY='[{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2"},
-                         {"from":"2023-10-16","targets":"strength:3,martialarts:2","good":5}]'
+  WEEKLY_GOALS_HISTORY='[{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2","exclude":"walking"},
+                         {"from":"2023-10-16","targets":"strength:3,martialarts:2","good":5,"exclude":"walking"}]'
 ```
 
 To change your goals from today: move the current ones into the history with their
