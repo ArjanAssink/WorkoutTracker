@@ -42,6 +42,7 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`  | `/api/photos`    | Photos from Strava, newest first, each linked to its workout. |
 | `GET`  | `/api/routes/data` | Every stored route as an encoded polyline, with home and the away places worked out. |
 | `GET`  | `/api/recovery/data` | What it reads: one row per day with 28-day baselines, the weekly join with effort, the 90-day typical night. |
+| `GET`  | `/api/recovery/patterns` | The whole history analysed: training against sleep, resting HR, HRV, weight, daylight; readings generated from the numbers. |
 | `GET`  | `/api/lifts`     | Everything the Strength page reads, as JSON. |
 | `GET`  | `/api/calendar.ics` | iCalendar feed to subscribe to. Token in the query string. |
 | `GET`  | `/api/health`   | Unauthenticated liveness probe. |
@@ -413,6 +414,23 @@ Decisions worth knowing:
   a week of them exists. The page reads today against that, not against a population norm.
 - HRV is the day's mean of Apple's SDNN samples (several a day, most overnight);
   respiratory rate, wrist temperature and breathing disturbances file under the morning.
+
+### Patterns
+
+A card at the bottom of the Recovery page, computed from everything stored (hourly cache):
+the next morning by what the day held (nothing / walks only / one session / two or more /
+≥ 90 min), by activity, late vs early sessions, day of the week, training load against
+resting HR in the same week and the week after, sleep against resting HR, year by year,
+season and daylight (sunrise, sunset and day length at your home latitude against sleep,
+bedtime and wake time), and weight within each year.
+
+Three habits keep it honest, in `src/domain/patterns.ts`: walks are kept apart from
+training (the watch auto-detects them, twenty a week in some years); weekly correlations
+are taken on deviations from the surrounding quarter, because weight, resting HR and
+walking drift together across the years; and "a day with nothing" is reported with its
+caveat, since nobody trains when ill. The **readings** at the top are sentences produced
+by thresholds over those numbers — a pattern that stops holding stops being claimed, and
+each one carries its n.
 
 ### The recovery rating
 

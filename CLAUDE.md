@@ -299,6 +299,11 @@ malformed envelope still returns 400. Keep that asymmetry.
   stores no routes. Home is `homeOf` (densest 1 km bin of starts); the split is by *start*
   point, not centroid, on purpose. The page geocodes place names client-side via Nominatim
   (one request a second, cached in localStorage) — the only external call any page makes.
+- **Patterns are computed, never hard-coded** (`domain/patterns.ts`, `/api/recovery/patterns`,
+  hourly cache). The readings are threshold rules over the tables; to add a finding, add a
+  rule with its n and its threshold, never a sentence. Walks ≠ training; weekly r on
+  detrended series; "nothing at all" days carry the illness caveat. Sunrise maths lives
+  there too (`sunTimes`, almanac zenith 90.833°).
 - **Recovery rows merge, never replace.** `RecoveryRepository.upsertMany` uses Table
   Storage's Merge mode because the two sources carry different fields on different days;
   a Replace would let a resting-heart-rate-only batch erase the night. A night is keyed by

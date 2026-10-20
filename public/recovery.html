@@ -59,6 +59,8 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 .week-card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .week-card .when { font-weight: 600; } .week-card .total { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .week-card .meta { margin-top: 4px; font-size: 12px; color: var(--text-muted); display: flex; gap: 4px 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { #weeks { display: none; } .week-list { display: block; } }
+.readings { margin: 10px 0 0; padding: 0 0 0 18px; } .readings li { margin: 6px 0; font-size: 13px; line-height: 1.45; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; } .grid2 h3 { font-size: 12px; font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); } .grid2 .sub { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
 .stale { opacity: 0.45; transition: opacity 120ms ease; }
 svg { display: block; width: 100%; overflow: visible; } svg text { fill: var(--text-muted); font-size: 11px; }
 svg .tick-value { font-variant-numeric: tabular-nums; } svg .grid-line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; } svg .axis-line { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
@@ -144,6 +146,12 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
       <div class="card-head"><h2>Week by week — load against recovery</h2><span class="note" id="weeks-note"></span></div>
       <div class="scroll" id="weeks"></div>
       <div class="week-list" id="week-list"></div>
+    </div>
+
+    <div class="card" id="patterns-card" hidden>
+      <div class="card-head"><h2>Patterns</h2><span class="note" id="patterns-note"></span></div>
+      <ol class="readings" id="readings"></ol>
+      <div class="grid2" id="patterns-tables"></div>
     </div>
 
     <div class="card">
@@ -429,6 +437,41 @@ function renderAll() {
   renderDaily("hrv-chart", "hrv-note", (d) => d.hrv, (d) => d.hrvBaseline, "ms", "var(--cat-3)");
   renderWeeks(); renderSmalls();
 }
+/* ---- patterns: the whole history, computed server-side; readings first, the tables they rest on beneath ---- */
+async function loadPatterns() {
+  const card = document.getElementById("patterns-card");
+  try {
+    const r = await fetch("/api/recovery/patterns", { headers: { "x-api-key": state.key } });
+    if (!r.ok) { card.hidden = true; return; }
+    const { patterns: p, computedAt } = await r.json(); if (!p) { card.hidden = true; return; }
+    card.hidden = false;
+    document.getElementById("patterns-note").textContent = `${p.span.days.toLocaleString()} days, ${p.span.workouts.toLocaleString()} workouts, ${p.span.from} – ${p.span.to} · recomputed hourly from everything stored (last ${new Date(computedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}) · r is a correlation: under 0.1 is noise, 0.3 is a clear pattern in data this size`;
+    document.getElementById("readings").replaceChildren(...p.readings.map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
+    const host = document.getElementById("patterns-tables"); host.replaceChildren();
+    const section = (title, sub, headers, rows) => { const el = document.createElement("div"); const h3 = document.createElement("h3"); h3.textContent = title; el.appendChild(h3); if (sub) { const s = document.createElement("div"); s.className = "sub"; s.textContent = sub; el.appendChild(s); } const sc = document.createElement("div"); sc.className = "scroll"; sc.appendChild(buildTable(headers, rows)); el.appendChild(sc); host.appendChild(el); };
+    const f = (st, d = 1) => (st ? { text: st.mean.toFixed(d), num: true } : { text: "—", num: true });
+    const morningRows = (ms) => ms.map((m) => [m.label, { text: `${m.n}`, num: true }, f(m.rhr), f(m.hrv), m.sleepHours ? { text: hm(m.sleepHours.mean * 3600), num: true } : { text: "—", num: true }, f(m.wakeUps), m.bedtimeMinutes ? { text: clock(m.bedtimeMinutes.mean), num: true } : { text: "—", num: true }]);
+    const mh = ["", { text: "days", num: true }, { text: "RHR", num: true }, { text: "HRV", num: true }, { text: "sleep", num: true }, { text: "wake-ups", num: true }, { text: "bedtime", num: true }];
+    section("The next morning, by what the day held", "means of the following night and morning; walks kept apart from training", mh, morningRows(p.byDayType));
+    section("By activity", "days that held the activity, n ≥ 15", mh, morningRows(p.byActivity));
+    section("Late vs early sessions", "the day's last session ending after 20:00 vs before 18:00", mh, morningRows([p.lateVsEarly.late, p.lateVsEarly.early]));
+    section("Day of the week", "the night that follows, and the morning after", mh, morningRows(p.weekday));
+    const c = (x) => ({ text: `${x.r >= 0 ? "+" : ""}${x.r.toFixed(2)}`, num: true });
+    section("Training load → resting HR, week by week", `trend removed (deviation from the surrounding quarter); n=${p.loadToRhr.sameWeek.tmins.n} weeks`, ["", { text: "same week", num: true }, { text: "next week", num: true }],
+      [["training sessions", c(p.loadToRhr.sameWeek.tsessions), c(p.loadToRhr.nextWeek.tsessions)], ["training minutes", c(p.loadToRhr.sameWeek.tmins), c(p.loadToRhr.nextWeek.tmins)], ["effort", c(p.loadToRhr.sameWeek.effort), c(p.loadToRhr.nextWeek.effort)], ["walking minutes", c(p.loadToRhr.sameWeek.walk), c(p.loadToRhr.nextWeek.walk)]]);
+    section("Sleep → resting HR", "deviation from the running baseline the morning after an unusual night", ["", { text: "RHR vs baseline", num: true }, { text: "n", num: true }],
+      [["night ≥ 1 h shorter than usual", { text: `${p.sleepToRhr.shortNight.mean >= 0 ? "+" : ""}${p.sleepToRhr.shortNight.mean.toFixed(1)}`, num: true }, { text: `${p.sleepToRhr.shortNight.n}`, num: true }], ["night ≥ 1 h longer", { text: `${p.sleepToRhr.longNight.mean >= 0 ? "+" : ""}${p.sleepToRhr.longNight.mean.toFixed(1)}`, num: true }, { text: `${p.sleepToRhr.longNight.n}`, num: true }], ["weekly sleep ↔ RHR, r", c(p.sleepToRhr.weeklyR), { text: `${p.sleepToRhr.weeklyR.n}`, num: true }]]);
+    section("Year by year", "medians; training excludes walks", ["year", { text: "RHR", num: true }, { text: "HRV", num: true }, { text: "sleep", num: true }, { text: "deep", num: true }, { text: "kg", num: true }, { text: "train min/wk", num: true }, { text: "walk min/wk", num: true }],
+      p.years.map((y) => [y.year, { text: y.rhr ?? "—", num: true }, { text: y.hrv ?? "—", num: true }, y.sleepHours !== undefined ? { text: hm(y.sleepHours * 3600), num: true } : { text: "—", num: true }, y.deepHours !== undefined ? { text: hm(y.deepHours * 3600), num: true } : { text: "—", num: true }, { text: y.kg !== undefined ? y.kg.toFixed(1) : "—", num: true }, { text: y.trainingMinutesPerWeek !== undefined ? `${Math.round(y.trainingMinutesPerWeek)}` : "—", num: true }, { text: y.walkMinutesPerWeek !== undefined ? `${Math.round(y.walkMinutesPerWeek)}` : "—", num: true }]));
+    const MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    section("Season and daylight", `sunrise, sunset and day length at ${p.daylight.latitude.toFixed(1)}°N against sleep · sleep ↔ day length r ${p.daylight.sleepVsDayLength.r.toFixed(2)} · wake vs sunrise slope ${p.daylight.wakeVsSunrise.slope.toFixed(2)} · bedtime vs sunset slope ${p.daylight.bedtimeVsSunset.slope.toFixed(2)}`,
+      ["month", { text: "daylight", num: true }, { text: "sunrise", num: true }, { text: "sunset", num: true }, { text: "sleep", num: true }, { text: "bed", num: true }, { text: "wake", num: true }, { text: "RHR", num: true }],
+      p.daylight.months.map((m, i) => [MN[i], { text: `${m.dayLengthHours.toFixed(1)} h`, num: true }, { text: clock(m.sunriseMinutes), num: true }, { text: clock(m.sunsetMinutes), num: true }, m.sleepHours !== undefined ? { text: hm(m.sleepHours * 3600), num: true } : { text: "—", num: true }, m.bedtimeMinutes !== undefined ? { text: clock(m.bedtimeMinutes), num: true } : { text: "—", num: true }, m.wakeMinutes !== undefined ? { text: clock(m.wakeMinutes), num: true } : { text: "—", num: true }, { text: p.months[i].rhr !== undefined ? p.months[i].rhr.toFixed(1) : "—", num: true }]));
+    if (p.weightWithinYear.length) section("Weight, within each year", "weekly means; r between weight and the others, so the year-to-year drift does not count", ["year", { text: "weeks", num: true }, { text: "kg ↔ RHR", num: true }, { text: "training ↔ kg", num: true }, { text: "walking ↔ kg", num: true }],
+      p.weightWithinYear.map((y) => [y.year, { text: `${y.weeks}`, num: true }, c(y.kgRhr), c(y.trainingKg), c(y.walkingKg)]));
+  } catch { card.hidden = true; }
+}
+
 async function load() {
   const app = document.getElementById("app"), err = document.getElementById("error"); app.classList.add("stale"); err.hidden = true;
   try {
@@ -436,7 +479,7 @@ async function load() {
     if (r.status === 401) { signOut("That key was rejected."); return; }
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     state.data = await r.json();
-    renderAll();
+    renderAll(); loadPatterns();
   } catch (e) { err.textContent = `Could not load recovery data: ${e.message}`; err.hidden = false; }
   finally { app.classList.remove("stale"); }
 }
