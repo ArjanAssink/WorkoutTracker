@@ -124,10 +124,12 @@ describe("detectMilestones", () => {
     expect(keys(context([record], before, []))).not.toContain("max-hr:194");
   });
 
-  it("flags the longest session of a target activity after enough history", () => {
+  it("flags the longest session of a target activity after enough history, only by a clear margin", () => {
     const long = w("2026-03-10T19:00:00Z", "martialarts", { durationSeconds: 7200 });
-    expect(keys(context([long], priorWeeks(3), [long]))).toContain("longest:martialarts"); // 6 prior BJJ sessions
+    expect(keys(context([long], priorWeeks(3), [long]))).toContain("longest:martialarts"); // 6 prior BJJ sessions of 60 min
     expect(keys(context([long], priorWeeks(2), [long]))).not.toContain("longest:martialarts"); // only 4
+    const nearly = w("2026-03-10T19:00:00Z", "martialarts", { durationSeconds: 3600 + 10 * 60 }); // 70 vs 60 min: the strap went on early, not a record
+    expect(keys(context([nearly], priorWeeks(3), [nearly]))).not.toContain("longest:martialarts");
     const run = w("2026-03-10T19:00:00Z", "running", { durationSeconds: 7200 });
     expect(keys(context([run], priorWeeks(3), [run]))).not.toContain("longest:running"); // not a target
   });

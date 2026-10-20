@@ -289,7 +289,7 @@ to Telegram:
 | `streak:N` | The week is good or perfect and makes it 4, 8, 12, 26 or 52 in a row. |
 | `effort-high` | Effort already above every completed week of the past year (needs 12 weeks of history). |
 | `max-hr:<bpm>` | A workout that just arrived beat the past year's max heart rate, within 25 bpm of `ATHLETE_MAX_HR`. |
-| `longest:<activity>` | Longest session of a target activity in a year, after five earlier ones. |
+| `longest:<activity>` | Longest session of a target activity in a year — by at least 15 % and 15 minutes, since a class's recorded length is mostly when the strap went on. |
 
 Each key is announced **once per ISO week**; the `milestones` table remembers what went
 out, which is what keeps the automation's daily re-post of the same seven days quiet. Only

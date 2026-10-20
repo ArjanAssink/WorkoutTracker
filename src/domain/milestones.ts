@@ -39,6 +39,13 @@ export interface MilestoneContext {
 export const STREAK_MILESTONES = [4, 8, 12, 26, 52];
 const MIN_WEEKS_FOR_RECORDS = 12;
 const MIN_SESSIONS_FOR_LONGEST = 5;
+/**
+ * A "longest session" has to be clearly longer, not merely longer: for a class-based
+ * activity the recorded length is mostly when the strap went on and came off (arriving
+ * early adds twenty minutes of nothing), so the same neighbourhood is not a record.
+ */
+const LONGEST_MARGIN_FRACTION = 0.15;
+const LONGEST_MARGIN_SECONDS = 15 * 60;
 /** A new peak this far above the configured max is a strap glitch, not a record. */
 const MAX_PLAUSIBLE_ABOVE_FALLBACK = 25;
 
@@ -127,10 +134,11 @@ export function detectMilestones(ctx: MilestoneContext): Milestone[] {
     if (ctx.spec.targets.some((t) => t.activityType === w.activityType)) {
       const same = before.filter((p) => p.activityType === w.activityType);
       const longest = Math.max(0, ...same.map((p) => p.durationSeconds));
-      if (same.length >= MIN_SESSIONS_FOR_LONGEST && w.durationSeconds > longest) {
+      const clearlyLonger = w.durationSeconds >= longest * (1 + LONGEST_MARGIN_FRACTION) && w.durationSeconds - longest >= LONGEST_MARGIN_SECONDS;
+      if (same.length >= MIN_SESSIONS_FOR_LONGEST && clearlyLonger) {
         out.push({
           key: `longest:${w.activityType}`,
-          text: `⏱ Longest ${escape(displayName(w.activityType))} in a year: ${duration(w.durationSeconds)} (previous ${duration(longest)}).`,
+          text: `⏱ Longest ${escape(displayName(w.activityType))} in a year by a margin: ${duration(w.durationSeconds)} (previous ${duration(longest)}, +${duration(w.durationSeconds - longest)}).`,
         });
       }
     }
