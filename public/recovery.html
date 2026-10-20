@@ -60,7 +60,7 @@ h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 .week-card .meta { margin-top: 4px; font-size: 12px; color: var(--text-muted); display: flex; gap: 4px 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { #weeks { display: none; } .week-list { display: block; } }
 .readings { margin: 10px 0 0; padding: 0 0 0 18px; } .readings li { margin: 6px 0; font-size: 13px; line-height: 1.45; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; } .grid2 h3 { font-size: 12px; font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); } .grid2 .sub { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 16px 28px; margin-top: 12px; } @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } } .grid2 h3 { font-size: 12px; font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); } .grid2 .sub { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
 .stale { opacity: 0.45; transition: opacity 120ms ease; }
 svg { display: block; width: 100%; overflow: visible; } svg text { fill: var(--text-muted); font-size: 11px; }
 svg .tick-value { font-variant-numeric: tabular-nums; } svg .grid-line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; } svg .axis-line { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }

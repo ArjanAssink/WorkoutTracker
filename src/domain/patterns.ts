@@ -172,7 +172,8 @@ export function analysePatterns(days: RecoveryDay[], workouts: Workout[], weight
   const trainToRhrNext = pearson(dTrain.slice(0, -1), dRhr.slice(1));
 
   const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((name, dow) => morning(name, all.filter((i) => rows[i]!.dow === dow)));
-  const yearsSet = [...new Set(rows.map((r) => r.date.slice(0, 4)))];
+  // Years with a heart-rate or sleep figure; the in-bed-only years before the watch add nothing here.
+  const yearsSet = [...new Set(rows.filter((r) => r.rhr !== undefined || r.asleep !== undefined).map((r) => r.date.slice(0, 4)))];
   const years: Patterns["years"] = yearsSet.map((year) => { const xs = rows.filter((r) => r.date.startsWith(year)); const wk = W.filter((w) => w.week.startsWith(year)); return strip<Patterns["years"][number]>({
     year, rhr: medOpt(xs.map((x) => x.rhr)), hrv: medOpt(xs.map((x) => x.hrv)), sleepHours: medOpt(xs.map((x) => x.asleep)), deepHours: medOpt(xs.map((x) => x.deep)), kg: medOpt(xs.map((x) => x.kg)),
     trainingMinutesPerWeek: wk.length ? med(wk.map((w) => w.tmins)) : undefined, walkMinutesPerWeek: wk.length ? med(wk.map((w) => w.walk)) : undefined, sessionsPerWeek: wk.length ? med(wk.map((w) => w.tsessions)) : undefined,
