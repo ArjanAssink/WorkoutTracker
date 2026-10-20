@@ -109,7 +109,10 @@ against every other, and relabelling a slug changes identity.
 ## Model decisions (the person's numbers stay out of the repo)
 
 - Weekly targets per activity live in `WEEKLY_GOALS` / `GOOD_WEEK_SESSIONS` /
-  `VERY_GOOD_WEEK_SESSIONS` / `VERY_GOOD_WEEK_MIN` (app settings). The ladder: perfect =
+  `VERY_GOOD_WEEK_SESSIONS` / `VERY_GOOD_WEEK_MIN` (app settings), **in force from
+  `WEEKLY_GOALS_FROM`**; earlier periods in `WEEKLY_GOALS_HISTORY` (JSON). `reviewWeeks`
+  takes the schedule and judges each week by its period (`specFor`); never recompute old
+  weeks with the current goals. Changing goals = move the old ones into the history. The ladder: perfect =
   every target; very good = 6+ sessions of any kind with 2+ strength; good = 5+ of any
   kind; short. Any activity counts for good/very good; only targets count for perfect. Apple Watch has no BJJ/Capoeira type: BJJ is
   recorded as Martial Arts, Capoeira as Tai Chi; `PERSONAL_OVERRIDES` relabels on the way

@@ -91,22 +91,22 @@ function verdictLine(week: WeekReview, report: WeeklyReport): string {
       return "Every target hit. That is the week you were aiming for.";
     case "verygood":
       return (
-        `Very good week — ${report.spec.veryGoodWeekSessions}+ sessions with the minimums met, but missed ` +
+        `Very good week — ${week.veryGoodWeekSessions}+ sessions with the minimums met, but missed ` +
         missed.map((t) => `${escape(t.label)} (${t.actual}/${t.sessions})`).join(", ") +
         "."
       );
     case "good": {
-      const floors = report.spec.veryGoodWeekMinimums.filter((m) => (week.sessionsByActivity[m.activityType] ?? 0) < m.sessions).map((m) => `${m.sessions}× ${escape(displayName(m.activityType))}`);
-      const gap = report.spec.veryGoodWeekSessions - week.totalSessions;
+      const floors = week.veryGoodWeekMinimums.filter((m) => (week.sessionsByActivity[m.activityType] ?? 0) < m.sessions).map((m) => `${m.sessions}× ${escape(displayName(m.activityType))}`);
+      const gap = week.veryGoodWeekSessions - week.totalSessions;
       const toVeryGood = [gap > 0 ? `${gap} more session${gap === 1 ? "" : "s"}` : "", ...floors].filter(Boolean).join(" and ");
       return (
-        `Good week — ${report.spec.goodWeekSessions}+ sessions, but missed ` +
+        `Good week — ${week.goodWeekSessions}+ sessions, but missed ` +
         missed.map((t) => `${escape(t.label)} (${t.actual}/${t.sessions})`).join(", ") +
         `.${toVeryGood ? ` Very good needed ${toVeryGood}.` : ""}`
       );
     }
     case "short": {
-      const gap = report.spec.goodWeekSessions - week.totalSessions;
+      const gap = week.goodWeekSessions - week.totalSessions;
       return `Short by ${gap} session${gap === 1 ? "" : "s"} of a good week. Missed ` +
         missed.map((t) => `${escape(t.label)} (${t.actual}/${t.sessions})`).join(", ") + ".";
     }

@@ -63,3 +63,21 @@ describe("loadConfig", () => {
     expect(config.profile.restingHeartRate).toBe(50);
   });
 });
+
+describe("goal schedule", () => {
+  it("builds periods from the history setting with the current goals last", async () => {
+    const { loadGoalSchedule } = await import("../src/config/index.js");
+    const env = { WEEKLY_GOALS: "strength:3,martialarts:2,taichi:1", WEEKLY_GOALS_FROM: "2026-04-27", WEEKLY_GOALS_HISTORY: '[{"from":"2023-10-16","targets":"strength:3,martialarts:2","good":5},{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2"}]' } as NodeJS.ProcessEnv;
+    const s = loadGoalSchedule(env);
+    expect(s.periods.map((p) => p.from)).toEqual(["2022-02-07", "2023-10-16", "2026-04-27"]);
+    expect(s.periods[0]!.goodWeekSessions).toBe(4);
+    expect(s.periods[1]!.targets).toHaveLength(2);
+    expect(s.periods[1]!.veryGoodWeekMinimums).toEqual([{ activityType: "strength", sessions: 2 }]); // inherited from the current goals
+    expect(s.periods[2]!.targets).toHaveLength(3);
+  });
+  it("rejects malformed history", async () => {
+    const { loadGoalSchedule } = await import("../src/config/index.js");
+    expect(() => loadGoalSchedule({ WEEKLY_GOALS_HISTORY: "nope" } as NodeJS.ProcessEnv)).toThrow(/JSON/);
+    expect(() => loadGoalSchedule({ WEEKLY_GOALS_HISTORY: '[{"targets":"strength:3"}]' } as NodeJS.ProcessEnv)).toThrow(/from/);
+  });
+});

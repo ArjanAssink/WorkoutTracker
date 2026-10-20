@@ -193,6 +193,24 @@ az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNC
   --settings WEEKLY_GOALS="strength:3,martialarts:2,taichi:1" GOOD_WEEK_SESSIONS=5
 ```
 
+**Goals are time-bound.** Each week is judged by the goals in force when it happened, so
+changing the goals never rewrites history. `WEEKLY_GOALS` / `GOOD_WEEK_SESSIONS` /
+`VERY_GOOD_WEEK_SESSIONS` / `VERY_GOOD_WEEK_MIN` are the current goals, from
+`WEEKLY_GOALS_FROM`; earlier periods go in `WEEKLY_GOALS_HISTORY`, a JSON array of
+`{from, targets, good, veryGood, veryGoodMin}` (missing fields inherit the current
+values; empty `targets` means the week is judged on counts alone and can never be perfect):
+
+```bash
+az functionapp config appsettings set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNCTION_APP" --settings \
+  WEEKLY_GOALS_FROM=2026-04-27 \
+  WEEKLY_GOALS_HISTORY='[{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2"},
+                         {"from":"2023-10-16","targets":"strength:3,martialarts:2","good":5}]'
+```
+
+To change your goals from today: move the current ones into the history with their
+`from`, set the new ones, and set `WEEKLY_GOALS_FROM` to this Monday. The dashboard's
+table shows a column for every target any shown week had, with — where a week had none.
+
 The ladder has four rungs. **Perfect**: every per-activity target met. **Very good**: at
 least `VERY_GOOD_WEEK_SESSIONS` (6) sessions of *any* kind, provided the floors in
 `VERY_GOOD_WEEK_MIN` hold (`strength:2`). **Good**: at least `GOOD_WEEK_SESSIONS` (5) of

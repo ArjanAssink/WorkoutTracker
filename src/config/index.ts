@@ -1,6 +1,6 @@
 import type { AthleteProfile } from "../domain/effort.js";
 import { DEFAULT_PROFILE } from "../domain/effort.js";
-import { DEFAULT_GOALS, parseGoalTargets, type GoalSpec } from "../domain/goals.js";
+import { DEFAULT_GOALS, parseGoalTargets, type GoalPeriod, type GoalSchedule, type GoalSpec } from "../domain/goals.js";
 
 export interface AppConfig extends TableTarget {
   /** Shared secret the Shortcut sends in `x-api-key`. */
@@ -13,7 +13,10 @@ export interface AppConfig extends TableTarget {
    */
   calendarToken: string | undefined;
   profile: AthleteProfile;
+  /** The current goals. */
   goals: GoalSpec;
+  /** Every period, oldest first, ending with the current goals; weeks are judged by the one in force. */
+  goalSchedule: GoalSchedule;
   /** Telegram delivery for the weekly summary. Both unset disables it. */
   telegram: { botToken: string; chatId: string } | undefined;
   /** Strava API application; tokens themselves live in the settings table once connected. */
@@ -79,7 +82,35 @@ export function loadTableTarget(env: NodeJS.ProcessEnv = process.env): TableTarg
  *   GOOD_WEEK_SESSIONS=5
  *   VERY_GOOD_WEEK_SESSIONS=6
  *   VERY_GOOD_WEEK_MIN=strength:2
+ *   WEEKLY_GOALS_FROM=2026-04-27            when the current goals began (default: always)
+ *   WEEKLY_GOALS_HISTORY=[{"from":"2022-02-07","targets":"strength:3","good":4,"veryGood":5,"veryGoodMin":"strength:2"}, …]
+ * Earlier weeks are judged by the history period in force; before the first period, by the first.
  */
+export function loadGoalSchedule(env: NodeJS.ProcessEnv = process.env): GoalSchedule {
+  const current: GoalPeriod = { ...loadGoals(env), from: env["WEEKLY_GOALS_FROM"]?.trim() || "2000-01-01" };
+  const periods: GoalPeriod[] = [];
+  const raw = env["WEEKLY_GOALS_HISTORY"]?.trim();
+  if (raw) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { throw new ConfigError("WEEKLY_GOALS_HISTORY is not valid JSON"); }
+    if (!Array.isArray(parsed)) throw new ConfigError("WEEKLY_GOALS_HISTORY must be a JSON array");
+    for (const p of parsed as Array<Record<string, unknown>>) {
+      const from = typeof p["from"] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p["from"]) ? p["from"] : undefined;
+      if (!from) throw new ConfigError("Each WEEKLY_GOALS_HISTORY period needs a from: YYYY-MM-DD");
+      const targetsRaw = typeof p["targets"] === "string" ? p["targets"] : "";
+      periods.push({
+        from,
+        targets: targetsRaw.trim() ? parseGoalTargets(targetsRaw) : [],
+        goodWeekSessions: typeof p["good"] === "number" ? p["good"] : current.goodWeekSessions,
+        veryGoodWeekSessions: typeof p["veryGood"] === "number" ? p["veryGood"] : current.veryGoodWeekSessions,
+        veryGoodWeekMinimums: typeof p["veryGoodMin"] === "string" ? (p["veryGoodMin"].trim() ? parseGoalTargets(p["veryGoodMin"]) : []) : current.veryGoodWeekMinimums,
+      });
+    }
+  }
+  periods.push(current);
+  return { periods: periods.sort((a, b) => a.from.localeCompare(b.from)) };
+}
+
 export function loadGoals(env: NodeJS.ProcessEnv = process.env): GoalSpec {
   return {
     targets: parseGoalTargets(env["WEEKLY_GOALS"]),
@@ -97,6 +128,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     calendarToken: env["CALENDAR_TOKEN"] || undefined,
     profile: loadAthleteProfile(env),
     goals: loadGoals(env),
+    goalSchedule: loadGoalSchedule(env),
     telegram:
       env["TELEGRAM_BOT_TOKEN"] && env["TELEGRAM_CHAT_ID"]
         ? { botToken: env["TELEGRAM_BOT_TOKEN"], chatId: env["TELEGRAM_CHAT_ID"] }

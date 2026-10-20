@@ -1121,9 +1121,10 @@ function renderGoals() {
   }
 
   const weeks = report.weeks;
-  const labelOf = Object.fromEntries(weeks[0].targets.map((t) => [t.activityType, t.label]));
+  const labelOf = Object.fromEntries(weeks.flatMap((wk) => wk.targets.map((t) => [t.activityType, t.label])));
   spec.textContent = report.spec.targets.map((t) => `${t.sessions}× ${labelOf[t.activityType] ?? t.activityType}`).join(" · ")
-    + ` · good week = ${report.spec.goodWeekSessions}+ sessions`;
+    + ` · good week = ${report.spec.goodWeekSessions}+ sessions · very good = ${report.spec.veryGoodWeekSessions}+ with ${report.spec.veryGoodWeekMinimums.map((m) => `${m.sessions}× ${labelOf[m.activityType] ?? m.activityType}`).join(", ")}`
+    + (weeks.some((wk) => wk.goodWeekSessions !== report.spec.goodWeekSessions || wk.targets.length !== report.spec.targets.length) ? " · earlier weeks judged by the goals of their time" : "");
 
   // The last cell is the week in progress; the headline is about the last *complete* one.
   const inProgress = weeks[weeks.length - 1];
@@ -1154,13 +1155,16 @@ function renderGoals() {
     return cell;
   }));
 
+  // Goals can change over time: the columns are every target any shown week had, in order of first appearance.
+  const targetTypes = []; for (const wk of weeks) for (const t of wk.targets) if (!targetTypes.includes(t.activityType)) targetTypes.push(t.activityType);
+  const labelAll = {}; for (const wk of weeks) for (const t of wk.targets) labelAll[t.activityType] = t.label;
   const headers = ["Week", "Verdict",
-    ...report.spec.targets.map((t) => ({ text: labelOf[t.activityType] ?? t.activityType, num: false })),
+    ...targetTypes.map((a) => ({ text: labelAll[a] ?? a, num: false })),
     { text: "Other", num: true }, { text: "Sessions", num: true }, { text: "Time", num: true }, { text: "Effort", num: true }];
   const rows = [...weeks].reverse().map((wk, i) => [
     fmtWeek(wk.weekStart) + (i === 0 ? " (so far)" : ""),
     { el: verdictEl(wk.verdict) },
-    ...wk.targets.map((t) => ({ el: dotsEl(t.actual, t.sessions) })),
+    ...targetTypes.map((a) => { const t = wk.targets.find((x) => x.activityType === a); return t ? { el: dotsEl(t.actual, t.sessions) } : { text: "—" }; }),
     { text: `${wk.otherSessions || ""}`, num: true },
     { text: `${wk.totalSessions}`, num: true },
     { text: formatDuration(wk.durationSeconds), num: true },

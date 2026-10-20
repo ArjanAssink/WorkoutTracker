@@ -231,3 +231,29 @@ describe("lead-in weeks", () => {
     expect(report.weeks[0]!.effortRatio).toBeUndefined();
   });
 });
+
+describe("goals in force at the time", () => {
+  const schedule = {
+    periods: [
+      { from: "2022-02-07", targets: [{ activityType: "strength", sessions: 3 }], goodWeekSessions: 4, veryGoodWeekSessions: 5, veryGoodWeekMinimums: [{ activityType: "strength", sessions: 2 }] },
+      { from: "2026-03-09", ...DEFAULT_GOALS },
+    ],
+  };
+  it("judges a week by the period it falls in, and the week before the first period by the first", () => {
+    const strengthOnly = [w("2026-03-02T07:00:00Z", "strength"), w("2026-03-04T07:00:00Z", "strength"), w("2026-03-06T07:00:00Z", "strength")];
+    const earlier = reviewWeeks(strengthOnly, schedule, new Date("2026-03-02T00:00:00Z"), new Date("2026-03-09T00:00:00Z"));
+    expect(earlier.current!.verdict).toBe("perfect"); // three strength sessions was every target in force then
+    expect(earlier.current!.targets.map((t) => t.activityType)).toEqual(["strength"]);
+    expect(earlier.current!.goodWeekSessions).toBe(4);
+    const later = reviewWeeks(strengthOnly.map((x) => ({ ...x, startedAt: x.startedAt.replace("2026-03-0", "2026-03-1") })), schedule, new Date("2026-03-09T00:00:00Z"), new Date("2026-03-16T00:00:00Z"));
+    expect(later.current!.verdict).toBe("short"); // the current goals want BJJ and Capoeira too
+    expect(later.spec.targets).toHaveLength(3);
+    const before = reviewWeeks([], schedule, new Date("2021-06-07T00:00:00Z"), new Date("2021-06-14T00:00:00Z"));
+    expect(before.current!.goodWeekSessions).toBe(4);
+  });
+  it("never calls a week with no targets perfect", () => {
+    const none = { targets: [], goodWeekSessions: 3, veryGoodWeekSessions: 5, veryGoodWeekMinimums: [] };
+    const report = reviewWeeks([w("2026-03-09T07:00:00Z", "walking"), w("2026-03-10T07:00:00Z", "walking"), w("2026-03-11T07:00:00Z", "cycling")], none, from, to);
+    expect(report.current!.verdict).toBe("good");
+  });
+});

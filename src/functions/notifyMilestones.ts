@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext, type Timer } from "@azure/functions";
 import { config } from "../config/index.js";
-import { reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../domain/goals.js";
+import { reviewWeeks, specFor, TYPICAL_WINDOW_WEEKS } from "../domain/goals.js";
 import { composeCheckIn, detectMilestones, type Milestone } from "../domain/milestones.js";
 import { startOfIsoWeek } from "../domain/summary.js";
 import type { Workout } from "../domain/workout.js";
@@ -46,9 +46,9 @@ export async function evaluateMilestones(arrived: Workout[], now: Date): Promise
 
   const from = new Date(weekStart.getTime() - LOOKBACK_WEEKS * WEEK_MS);
   const history = await (await getRepository()).listAll({ from, to: weekEnd });
-  const report = reviewWeeks(history, settings.goals, from, weekEnd);
+  const report = reviewWeeks(history, settings.goalSchedule, from, weekEnd);
   const found = detectMilestones({
-    spec: settings.goals, profile: settings.profile, weeks: report.weeks, streakWeeks: report.streakWeeks,
+    spec: specFor(settings.goalSchedule, weekKey), profile: settings.profile, weeks: report.weeks, streakWeeks: report.streakWeeks,
     history, arrived: touched, timeZone: TIMEZONE,
   });
 
@@ -103,11 +103,11 @@ export async function buildCheckIn(now: Date): Promise<{ text: string | undefine
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const from = new Date(weekStart.getTime() - TYPICAL_WINDOW_WEEKS * WEEK_MS);
   const history = await (await getRepository()).listAll({ from, to: weekEnd });
-  const report = reviewWeeks(history, settings.goals, from, weekEnd);
+  const report = reviewWeeks(history, settings.goalSchedule, from, weekEnd);
   const week = report.current;
   const weekKey = weekStart.toISOString().slice(0, 10);
   if (!week) return { text: undefined, weekStart: weekKey };
-  return { text: composeCheckIn(week, settings.goals, now, TIMEZONE, report.baseline?.medianSessions), weekStart: weekKey };
+  return { text: composeCheckIn(week, specFor(settings.goalSchedule, weekKey), now, TIMEZONE, report.baseline?.medianSessions), weekStart: weekKey };
 }
 
 /** Thursdays at 16:00 and 17:00 UTC; sends only when it is 18:00 in Amsterdam (see weeklyTimer). */

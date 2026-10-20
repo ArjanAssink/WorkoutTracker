@@ -29,7 +29,7 @@ export async function buildSummary(now: Date): Promise<{ text: string; weekStart
   const repository = await getRepository();
   const leadIn = new Date(from!.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
   const workouts = await repository.listAll({ from: leadIn, to });
-  const report = reviewWeeks(workouts, settings.goals, from!, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+  const report = reviewWeeks(workouts, settings.goalSchedule, from!, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
   return { text: composeWeeklySummary(report), weekStart: report.current?.weekStart };
 }
 

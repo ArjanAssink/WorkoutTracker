@@ -40,7 +40,7 @@ export async function getWeekly(request: HttpRequest, context: InvocationContext
     // has a "typical" to stand against.
     const leadIn = new Date(from.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
     const workouts = await repository.listAll({ from: leadIn, to });
-    return ok(reviewWeeks(workouts, settings.goals, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS }));
+    return ok(reviewWeeks(workouts, settings.goalSchedule, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS }));
   } catch (error) {
     context.error("Failed to build weekly review", error);
     return serverError("Failed to build weekly review");

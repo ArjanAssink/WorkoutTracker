@@ -26,6 +26,32 @@ export interface GoalSpec {
   veryGoodWeekMinimums: GoalTarget[];
 }
 
+/** A goal spec in force from a date. Weeks are judged by the spec in force when they happened. */
+export interface GoalPeriod extends GoalSpec {
+  /** `YYYY-MM-DD`; the period runs until the next period's `from`. */
+  from: string;
+}
+
+/** Periods oldest first; the last is the current goals. */
+export interface GoalSchedule {
+  periods: GoalPeriod[];
+}
+
+export function isSchedule(g: GoalSpec | GoalSchedule): g is GoalSchedule {
+  return "periods" in g;
+}
+
+/** The spec for a week: the latest period starting on or before it; the first period covers everything earlier. */
+export function specFor(g: GoalSpec | GoalSchedule, weekStart: string): GoalSpec {
+  if (!isSchedule(g)) return g;
+  const periods = [...g.periods].sort((a, b) => a.from.localeCompare(b.from));
+  let chosen = periods[0]!;
+  for (const p of periods) if (p.from <= weekStart) chosen = p;
+  return chosen;
+}
+
+export const currentSpec = (g: GoalSpec | GoalSchedule): GoalSpec => specFor(g, "9999-12-31");
+
 export const DEFAULT_GOALS: GoalSpec = {
   targets: [
     { activityType: "strength", sessions: 3 },
@@ -72,6 +98,10 @@ export interface WeekReview {
   /** Monday of the ISO week, `YYYY-MM-DD`. */
   weekStart: string;
   targets: TargetProgress[];
+  /** The thresholds this week was judged by — from the spec in force at the time. */
+  goodWeekSessions: number;
+  veryGoodWeekSessions: number;
+  veryGoodWeekMinimums: GoalTarget[];
   totalSessions: number;
   activeDays: number;
   durationSeconds: number;
@@ -104,6 +134,7 @@ export interface Baseline {
 }
 
 export interface WeeklyReport {
+  /** The goals in force for the most recent week returned. */
   spec: GoalSpec;
   /** Oldest first. */
   weeks: WeekReview[];
@@ -128,7 +159,7 @@ export interface ReviewOptions {
 /** Evaluates each ISO week in the range against the goals. */
 export function reviewWeeks(
   workouts: Workout[],
-  spec: GoalSpec,
+  goals: GoalSpec | GoalSchedule,
   from: Date,
   to: Date,
   options: ReviewOptions = {},
@@ -158,7 +189,7 @@ export function reviewWeeks(
 
   const all = [...weeks.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([weekStart, week]) => toReview(weekStart, week, spec));
+    .map(([weekStart, week]) => toReview(weekStart, week, specFor(goals, weekStart)));
 
   // Rolling comparison over everything evaluated, lead-in included, so the table can say
   // of any week how it stood against the ones before it — not only the latest.
@@ -176,7 +207,7 @@ export function reviewWeeks(
   const prior = reviews.slice(0, -1);
 
   return {
-    spec,
+    spec: current ? specFor(goals, current.weekStart) : currentSpec(goals),
     weeks: reviews,
     current,
     baseline: baselineOf(prior),
@@ -205,7 +236,7 @@ function toReview(
   // Perfect is strictly every target met. The other rungs are totals regardless of mix —
   // separate tests, so a substituted session still counts for one and not the other.
   const minimumsMet = spec.veryGoodWeekMinimums.every((m) => (week.counts.get(m.activityType) ?? 0) >= m.sessions);
-  const verdict: Verdict = targets.every((t) => t.met)
+  const verdict: Verdict = targets.length > 0 && targets.every((t) => t.met)
     ? "perfect"
     : totalSessions >= spec.veryGoodWeekSessions && minimumsMet
       ? "verygood"
@@ -216,6 +247,9 @@ function toReview(
   return {
     weekStart,
     targets,
+    goodWeekSessions: spec.goodWeekSessions,
+    veryGoodWeekSessions: spec.veryGoodWeekSessions,
+    veryGoodWeekMinimums: spec.veryGoodWeekMinimums,
     totalSessions,
     activeDays: week.days.size,
     durationSeconds: Math.round(week.duration),
