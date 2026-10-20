@@ -417,7 +417,9 @@ Decisions worth knowing:
 
 ### Patterns
 
-A card at the bottom of the Recovery page, computed from everything stored (hourly cache):
+A card at the bottom of the Recovery page, computed from everything stored — kept for a
+day, recomputed the moment a push writes something (a Shortcut post, a Health Auto Export
+batch, a weigh-in) and after `npm run sync`; `?fresh=1` forces it:
 the next morning by what the day held (nothing / walks only / one session / two or more /
 ≥ 90 min), by activity, late vs early sessions, day of the week, training load against
 resting HR in the same week and the week after, sleep against resting HR, year by year,

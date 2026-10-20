@@ -6,6 +6,7 @@ import { isAuthorised } from "../http/auth.js";
 import { badRequest, created, ok, serverError, unauthorised } from "../http/responses.js";
 import { BodyParseError, readJsonBody } from "../http/jsonBody.js";
 import { getBodyWeightRepository } from "./shared.js";
+import { invalidatePatterns } from "./patterns.js";
 
 /**
  * `GET  /api/bodyweight?days=|from=&to=`   one reading per day, oldest first
@@ -33,6 +34,7 @@ export async function bodyWeight(request: HttpRequest, context: InvocationContex
     if (!entry) return badRequest("Reading is outside the plausible range or the date is invalid");
     try {
       await (await getBodyWeightRepository()).upsert(entry);
+      invalidatePatterns();
       return created(entry);
     } catch (error) {
       context.error("Failed to store body weight", error);

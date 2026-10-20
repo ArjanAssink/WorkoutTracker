@@ -91,6 +91,14 @@ fi
 # 5. Import --------------------------------------------------------------------
 npm run import --silent -- "$XML" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
 
+# 6. The Patterns analysis is cached for a day; an import is new data, so recompute now --
+if [ -n "${WORKOUTS_URL:-}" ] && [[ " ${PASSTHROUGH[*]:-} " != *" --dry-run "* ]]; then
+  KEY=$(az functionapp config appsettings list -g "$RESOURCE_GROUP" -n "${AZURE_FUNCTION_APP:-}" --query "[?name=='INGEST_API_KEY'].value | [0]" -o tsv 2>/dev/null || true)
+  if [ -n "$KEY" ]; then
+    curl -s -o /dev/null -m 120 -H "x-api-key: $KEY" "$WORKOUTS_URL/api/recovery/patterns?fresh=1" && echo "Patterns recomputed." || echo "Patterns refresh skipped (app unreachable); it recomputes within a day."
+  fi
+fi
+
 echo
 echo "Extracted copy removed. The original zip is still at:"
 echo "  $ARCHIVE"

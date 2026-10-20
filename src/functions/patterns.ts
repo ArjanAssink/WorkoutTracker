@@ -9,10 +9,16 @@ import { getBodyWeightRepository, getRecoveryRepository, getRepository, getRoute
 /**
  * `GET /api/recovery/patterns` — the whole history analysed: training against sleep,
  * resting HR, HRV, weight and daylight. Everything in storage is read, so the result is
- * cached in the process for an hour; a new import or batch shows up by the next hour.
+ * kept for a day — the data barely moves — and dropped the moment a push writes
+ * something, so the next read recomputes. `?fresh` forces it (the sync script does that).
  */
-const CACHE_MS = 60 * 60_000;
+const CACHE_MS = 24 * 60 * 60_000;
 let cache: { at: number; value: Patterns | undefined } | undefined;
+
+/** Called by the write paths: a new workout, batch or weigh-in makes the cached analysis stale. */
+export function invalidatePatterns(): void {
+  cache = undefined;
+}
 
 export async function patternsHttp(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   const settings = config();

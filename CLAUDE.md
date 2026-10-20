@@ -299,8 +299,9 @@ malformed envelope still returns 400. Keep that asymmetry.
   stores no routes. Home is `homeOf` (densest 1 km bin of starts); the split is by *start*
   point, not centroid, on purpose. The page geocodes place names client-side via Nominatim
   (one request a second, cached in localStorage) — the only external call any page makes.
-- **Patterns are computed, never hard-coded** (`domain/patterns.ts`, `/api/recovery/patterns`,
-  hourly cache). The readings are threshold rules over the tables; to add a finding, add a
+- **Patterns are computed, never hard-coded** (`domain/patterns.ts`, `/api/recovery/patterns`;
+  cached a day per instance, `invalidatePatterns()` on every write path, `?fresh=1` from
+  `sync.sh`). The readings are threshold rules over the tables; to add a finding, add a
   rule with its n and its threshold, never a sentence. Walks ≠ training; weekly r on
   detrended series; "nothing at all" days carry the illness caveat. Sunrise maths lives
   there too (`sunTimes`, almanac zenith 90.833°).
