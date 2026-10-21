@@ -353,6 +353,11 @@ malformed envelope still returns 400. Keep that asymmetry.
   because Linux Flex Consumption ignores `WEBSITE_TIME_ZONE`. `GET /api/notify/weekly`
   previews the message; never wait a week to find out it is wrong. The Thursday check-in
   (`16,17 UTC → 18:00 local`) works the same way; `GET /api/notify/checkin?for=` previews it.
+- **The phone's silence is alerted, not assumed quiet** (`ingestWatch.ts`): the two
+  automations (workouts; health metrics) stamp `ingest.lastPush.workouts` /
+  `ingest.lastPush.metrics` in `settings`; a 07:30 UTC timer alerts on Telegram when either
+  has been silent three days, re-alerting every three days. New write paths must call
+  `recordPush(kind, source)`.
 - **Milestones are announced once per key per ISO week.** `announceMilestones` runs after
   every HTTP ingest and must never throw into the response; the Health Auto Export batch
   re-posts the same week daily, so without the `milestones` table every good week would be

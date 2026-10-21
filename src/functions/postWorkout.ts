@@ -9,6 +9,7 @@ import { badRequest, created, ok, serverError, unauthorised } from "../http/resp
 import { PayloadError, parseShortcutPayload } from "../ingest/shortcutPayload.js";
 import { announceMilestones } from "./notifyMilestones.js";
 import { invalidatePatterns } from "./patterns.js";
+import { recordPush } from "./ingestWatch.js";
 import { getRepository, observedMaxResolver } from "./shared.js";
 
 /**
@@ -51,6 +52,7 @@ export async function postWorkout(request: HttpRequest, context: InvocationConte
     for (const t of twins) await repository.delete(t.startedAt, t.id);
     const { created: isNew } = await repository.upsert(workout);
     if (isNew) invalidatePatterns();
+    await recordPush("workouts", "Shortcut", context);
 
     context.log(
       `${isNew ? "Recorded" : "Re-received"} ${workout.activityType} on ${workout.startedAt} ` +

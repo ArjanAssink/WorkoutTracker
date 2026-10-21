@@ -34,6 +34,7 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`/`POST` | `/api/notify/weekly` | Preview the Monday summary as text, or send it to Telegram now. |
 | `GET`/`POST` | `/api/notify/milestones` | What the week in progress has earned and what was already announced; `POST` sends what is due. |
 | `GET`/`POST` | `/api/notify/checkin` | Preview the Thursday check-in, or send it now. |
+| `GET`  | `/api/notify/stale` | When the phone last pushed data, and whether the three-day silence alert would fire. |
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
 | `GET`  | `/api/recovery`  | The Recovery page: sleep, resting HR and HRV against training load. |
 | `GET`  | `/api/map`       | The Routes page: every GPS track, home as the hero and each place away as a card. |
@@ -299,6 +300,17 @@ the two HTTP ingest paths trigger this — the export CLI writes history, not ne
 curl -s "$WORKOUTS_URL/api/notify/milestones" -H "x-api-key: $KEY"           # due + already sent
 curl -s -X POST "$WORKOUTS_URL/api/notify/milestones" -H "x-api-key: $KEY"   # send what is due
 ```
+
+### The silence alert
+
+There are two automations on the phone — the workout export and the health-metrics export
+(sleep, heart rate, steps) — and each successful push stamps its own key in the `settings`
+table. A timer at 07:30 UTC checks both and, when **either has been silent for three
+days**, sends a Telegram message naming which one, when it was last seen, and what to do
+(run the shortcut, check its automation). It nags again after a further three days of
+silence, not daily. Without this, a dead automation looks exactly like a quiet week — or
+a run of nights with no sleep data.
+`GET /api/notify/stale` shows the state.
 
 ### The Thursday 18:00 check-in
 

@@ -12,6 +12,7 @@ import { dailyWeights } from "../domain/bodyWeight.js";
 import type { WorkoutInput } from "../domain/workout.js";
 import { announceMilestones } from "./notifyMilestones.js";
 import { invalidatePatterns } from "./patterns.js";
+import { recordPush } from "./ingestWatch.js";
 import { getBodyWeightRepository, getRecoveryRepository, getRepository, observedMaxResolver } from "./shared.js";
 
 /**
@@ -147,6 +148,9 @@ export async function ingestHealthAutoExport(
   try {
     const written = await repository.upsertMany(ready);
     if (written > 0 || recoveryWritten > 0 || weightsWritten > 0) invalidatePatterns();
+    // Two automations share this endpoint: one sends workouts, the other the health metrics. Stamp whichever this was.
+    if (parsed.workouts.length + parsed.skipped.length > 0) await recordPush("workouts", "Health Auto Export", context);
+    if (metricNames.length) await recordPush("metrics", "Health Auto Export", context);
     // The batch re-posts the same days every morning; the milestone state keeps that quiet.
     if (written > 0) await announceMilestones(ready, context);
 
