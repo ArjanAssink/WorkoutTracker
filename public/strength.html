@@ -3,6 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2a78d6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Workouts">
+<link rel="manifest" href="/api/app-assets/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/api/app-assets/favicon-v1.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/api/app-assets/apple-touch-icon-v1.png">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-750x1334.png" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1125x2436.png" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1170x2532.png" media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1179x2556.png" media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1206x2622.png" media="screen and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-828x1792.png" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1242x2688.png" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1284x2778.png" media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1290x2796.png" media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="/api/app-assets/startup-v1-1320x2868.png" media="screen and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
 <meta name="robots" content="noindex, nofollow">
 <title>Strength</title>
 <style>
@@ -70,9 +86,42 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
 .gate input { width: 100%; font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page); color: var(--text-primary); margin-bottom: 10px; }
 .gate button { font: inherit; font-weight: 500; background: var(--series-1); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
 .err { color: #d03b3b; font-size: 12px; margin-top: 10px; } [hidden] { display: none !important; }
+
+#app-splash { position:fixed; inset:0; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:#2a78d6; color:#fff; font:14px/1.5 system-ui,sans-serif; }
+#app-splash img { width:112px; height:112px; border-radius:24px; }
+#app-splash strong { font-size:22px; font-weight:600; } #app-splash small { font-size:13px; opacity:0.85; }
+
+#app-splash img { animation:splash-swoop 1.1s cubic-bezier(0.22,0.7,0.3,1) both, splash-breathe 2s ease-in-out 1.1s infinite; }
+.splash-dots { display:inline-flex; gap:4px; margin-left:6px; vertical-align:middle; }
+.splash-dots i { display:block; width:4px; height:4px; border-radius:50%; background:currentColor; opacity:0.6; animation:splash-dot 1.2s ease-in-out infinite; }
+.splash-dots i:nth-child(2) { animation-delay:0.15s; } .splash-dots i:nth-child(3) { animation-delay:0.3s; }
+@keyframes splash-swoop {
+  0% { transform:translate(calc(-50vw - 112px),calc(50vh + 112px)) rotate(-18deg) scale(0.75); opacity:0; }
+  12% { opacity:1; }
+  50% { transform:translate(calc(50vw - 80px),calc(-50vh + 124px)) rotate(10deg) scale(1.06); opacity:1; }
+  78% { transform:translate(-8px,10px) rotate(-3deg) scale(0.98); opacity:1; }
+  100% { transform:translate(0,0) rotate(0) scale(1); opacity:1; }
+}
+@keyframes splash-breathe { 0%,100% { transform:scale(1); opacity:0.9; } 50% { transform:scale(1.035); opacity:1; } }
+@keyframes splash-dot { 0%,70%,100% { transform:translateY(0); opacity:0.35; } 35% { transform:translateY(-3px); opacity:1; } }
+@media (prefers-reduced-motion:reduce) { #app-splash img, .splash-dots i { animation:none; } }
+#app-splash[hidden] { display:none; }
+#app-force-refresh { position:fixed; z-index:10000; right:max(16px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); min-height:44px; border:1px solid var(--border); border-radius:22px; padding:10px 14px; background:var(--surface-1); color:var(--text-primary); font:13px system-ui,sans-serif; box-shadow:0 2px 12px rgba(0,0,0,0.12); cursor:pointer; }
+#app-force-refresh:focus-visible { outline:2px solid var(--series-1); outline-offset:3px; }
+#app-force-refresh:disabled { opacity:0.7; cursor:wait; }
+#app-refresh-status { position:fixed; z-index:10000; right:16px; bottom:76px; max-width:280px; padding:10px 14px; border-radius:8px; background:var(--surface-1); color:var(--text-primary); border:1px solid var(--border); font:13px/1.5 system-ui,sans-serif; }
 </style>
 </head>
 <body>
+<div id="app-splash" role="status" aria-label="Loading Workout Tracker">
+  <img src="/api/app-assets/icon-v1-192.png" width="112" height="112" alt="">
+  <strong>Workout Tracker</strong><small>Loading your training<span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span></small>
+</div>
+<button id="app-force-refresh" type="button" title="Clear app caches and load the latest version. Your saved key stays on this device.">↻ Refresh app</button>
+<div id="app-refresh-status" role="status" hidden></div>
+<script>setTimeout(() => { document.getElementById("app-splash").hidden = true; }, 8000); document.getElementById("app-force-refresh").onclick = () => location.reload();</script>
+<script src="/api/app-assets/app-shell.js" defer></script>
+<noscript><style>#app-splash{display:none}</style></noscript>
 <div class="wrap">
   <div id="gate" class="gate" hidden>
     <h2>API key</h2><p>Same key as the dashboard. Kept in this browser only.</p>
@@ -324,7 +373,7 @@ async function load() {
     wireGroup("family-group", present.map((f) => [f, FAMILY_LABEL[f]]), "family", (v) => { state.family = v; renderAll(); });
     renderAll();
   } catch (e) { err.textContent = `Could not load lifts: ${e.message}`; err.hidden = false; }
-  finally { app.classList.remove("stale"); }
+  finally { app.classList.remove("stale"); window.workoutAppReady = true; document.dispatchEvent(new Event("workout-app-ready")); }
 }
 function wireGroup(id, options, attr, onPick) {
   const g = document.getElementById(id); if (options) g.replaceChildren(...options.map(([v, l]) => { const b = document.createElement("button"); b.type = "button"; b.dataset[attr] = v; b.textContent = l; return b; }));
@@ -346,7 +395,7 @@ function init() {
   const fromUrl = new URL(location.href).searchParams.get("key"); if (fromUrl) history.replaceState(null, "", location.pathname);
   const key = fromUrl || readStored(KEY_STORAGE); if (key) start(key); else signOut();
 }
-function signOut(msg) { state.key = ""; writeStored(KEY_STORAGE, ""); document.getElementById("app").hidden = true; const g = document.getElementById("gate"); g.hidden = false; const e = document.getElementById("gate-err"); e.hidden = !msg; if (msg) e.textContent = msg; document.getElementById("gate-key").focus(); }
+function signOut(msg) { window.workoutAppReady = true; document.dispatchEvent(new Event("workout-app-ready"));  state.key = ""; writeStored(KEY_STORAGE, ""); document.getElementById("app").hidden = true; const g = document.getElementById("gate"); g.hidden = false; const e = document.getElementById("gate-err"); e.hidden = !msg; if (msg) e.textContent = msg; document.getElementById("gate-key").focus(); }
 function start(key) { state.key = key; writeStored(KEY_STORAGE, key); document.getElementById("gate").hidden = true; document.getElementById("app").hidden = false; load(); }
 init();
 </script>

@@ -18,6 +18,7 @@ import { resolveRange } from "../src/http/dateRange.js";
 import { DEFAULT_GOALS, reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../src/domain/goals.js";
 import { resolveWindow } from "../src/functions/getWeekly.js";
 
+import { assets, getAppVersion } from "../src/functions/appAssets.js";
 import { weekRecovery } from "../src/domain/weekRecovery.js";
 import { parseWeekAnnotation, type WeekAnnotation } from "../src/domain/weekAnnotation.js";
 
@@ -120,11 +121,17 @@ const WEIGHTS = (() => {
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://localhost:${PORT}`);
 
-  const send = (status: number, body: string, type: string) => {
+  const send = (status: number, body: string | Uint8Array, type: string) => {
     response.writeHead(status, { "content-type": type, "cache-control": "no-store" });
     response.end(body);
   };
   const json = (status: number, body: unknown) => send(status, JSON.stringify(body), "application/json");
+
+  const appAsset = url.pathname.match(/^\/api\/app-assets\/([^/]+)$/)?.[1];
+  if (appAsset && Object.hasOwn(assets, appAsset)) {
+    if (appAsset === "app-version.json") return json(200, { version: await getAppVersion() });
+    return send(200, await readFile(new URL(`../../public/app-assets/${appAsset}`, import.meta.url)), assets[appAsset]!);
+  }
 
   if (url.pathname === "/" || url.pathname === "/api/dashboard") {
     return send(200, await readFile(PAGE, "utf8"), "text/html; charset=utf-8");

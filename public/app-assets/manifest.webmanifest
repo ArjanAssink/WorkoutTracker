@@ -1,0 +1,16 @@
+{
+  "id": "/api/dashboard",
+  "name": "Workout Tracker",
+  "short_name": "Workouts",
+  "description": "Your training, progress, and recovery.",
+  "start_url": "/api/dashboard",
+  "scope": "/api/",
+  "display": "standalone",
+  "background_color": "#2a78d6",
+  "theme_color": "#2a78d6",
+  "icons": [
+    { "src": "/api/app-assets/icon-v1-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/api/app-assets/icon-v1-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/api/app-assets/icon-v1-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
