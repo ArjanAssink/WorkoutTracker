@@ -87,6 +87,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
 .gate input { width: 100%; font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page); color: var(--text-primary); margin-bottom: 10px; }
 .gate button { font: inherit; font-weight: 500; background: var(--series-1); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
 .err { color: #d03b3b; font-size: 12px; margin-top: 10px; } [hidden] { display: none !important; }
+
 </style>
 </head>
 <body>
@@ -129,6 +130,15 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
       <div class="legend" id="sleep-legend"></div>
       <button class="link" id="toggle-sleep-table" type="button" style="margin-top:10px">Show data table</button>
       <div id="sleep-table" hidden style="margin-top:12px" class="scroll"></div>
+    </div>
+
+    <div class="card" id="steps-card">
+      <div class="card-head"><h2>Steps over time</h2><span class="note" id="steps-note"></span></div>
+      <div class="plot" id="steps-chart"></div>
+      <div class="legend"><span><i style="background:var(--text-muted); opacity:0.45"></i>Daily steps</span><span><i style="height:2px; background:var(--series-1)"></i>7-day average</span><span><i style="height:2px; background:var(--text-primary)"></i>30-day average</span></div>
+      <p class="note">Averages use recorded days only (at least 4 of 7 or 15 of 30 days). Missing days are gaps, not zero steps. The current day may be incomplete.</p>
+      <button class="link" id="toggle-steps-table" type="button" aria-expanded="false" aria-controls="steps-table">Show data table</button>
+      <div id="steps-table" hidden style="margin-top:12px" class="scroll"></div>
     </div>
 
     <div class="two">
@@ -365,6 +375,44 @@ function renderDaily(hostId, noteId, pick, base, unit, color, fmt = (v) => `${Ma
   note.textContent = `${pts.length} days · median ${fmt(median(vals))} · range ${fmt(Math.min(...vals))}–${fmt(Math.max(...vals))} ${unit} · dashed = 28-day baseline`;
 }
 
+/* Calendar windows, rather than the last N readings: missing days never become zeros. */
+function stepTrend(days) {
+  const recorded = days.filter((d) => Number.isFinite(d.steps) && d.steps >= 0)
+    .map((d) => ({ date: d.date, t: Date.parse(`${d.date}T00:00:00Z`), steps: d.steps })).sort((a, b) => a.t - b.t);
+  return recorded.map((d) => {
+    const window = (n, min) => { const values = recorded.filter((p) => p.t <= d.t && p.t > d.t - n * 86400000); return values.length >= min ? mean(values.map((p) => p.steps)) : undefined; };
+    return { ...d, week: window(7, 4), month: window(30, 15) };
+  });
+}
+function renderSteps() {
+  const host = document.getElementById("steps-chart"), note = document.getElementById("steps-note"), pts = stepTrend(state.data.days);
+  const fmt = (v) => v === undefined ? "—" : Math.round(v).toLocaleString();
+  const table = document.getElementById("steps-table");
+  table.replaceChildren(buildTable(["Date", { text: "Steps", num: true }, { text: "7-day average", num: true }, { text: "30-day average", num: true }], pts.slice().reverse().map((p) => [fmtDate(p.date, { day: "numeric", month: "short", year: "numeric" }), ...[p.steps, p.week, p.month].map((v) => ({ text: fmt(v), num: true }))])));
+  if (!pts.length) { host.replaceChildren(emptyNote("No step counts recorded in this range.")); note.textContent = ""; return; }
+  const width = Math.max(280, host.clientWidth || 800), left = 52, right = 12, top = 12, plotH = 180, height = 220;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": "Daily steps with 7-day and 30-day averages. Exact values are available in the data table." });
+  const t0 = Date.parse(state.data.from), t1 = Math.max(t0 + 86400000, Date.parse(state.data.to));
+  const x = (t) => left + (t - t0) / (t1 - t0) * (width - left - right);
+  const ticks = niceTicks(0, Math.max(1, ...pts.map((p) => p.steps)) * 1.05), hi = ticks[ticks.length - 1];
+  const y = (v) => top + plotH * (1 - v / hi);
+  for (const v of ticks) { svg.appendChild(svgEl("line", { class: "grid-line", x1: left, x2: width - right, y1: y(v), y2: y(v) })); svg.appendChild(svgText(left - 8, y(v) + 4, fmt(v), { "text-anchor": "end" })); }
+  for (let i = 0; i <= 4; i++) { const t = t0 + (t1 - t0) * i / 4; svg.appendChild(svgText(x(t), top + plotH + 20, fmtDate(new Date(t).toISOString().slice(0, 10)), { "text-anchor": i === 0 ? "start" : i === 4 ? "end" : "middle" })); }
+  const barW = Math.max(1, Math.min(12, (width - left - right) / ((t1 - t0) / 86400000) * 0.7));
+  for (const p of pts) {
+    const cx = x(p.t + 43200000), hit = svgEl("rect", { class: "hit", x: cx - Math.max(3, barW / 2), y: top, width: Math.max(6, barW), height: plotH });
+    svg.appendChild(hit); svg.appendChild(svgEl("rect", { class: "mark", x: cx - barW / 2, y: y(p.steps), width: barW, height: top + plotH - y(p.steps), style: "fill:var(--text-muted); opacity:0.35" }));
+    attachTip(hit, fmtDate(p.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" }), [["steps", fmt(p.steps), null], ["7-day average", fmt(p.week), "var(--series-1)"], ["30-day average", fmt(p.month), "var(--text-primary)"]]);
+  }
+  for (const [key, color] of [["week", "var(--series-1)"], ["month", "var(--text-primary)"]]) {
+    let previous; const path = pts.map((p) => { if (p[key] === undefined) { previous = undefined; return ""; } const command = previous !== undefined && p.t - previous === 86400000 ? "L" : "M"; previous = p.t; return `${command}${x(p.t + 43200000).toFixed(1)},${y(p[key]).toFixed(1)}`; }).join("");
+    svg.appendChild(svgEl("path", { class: "series", style: `stroke:${color}; pointer-events:none`, d: path }));
+  }
+  host.replaceChildren(svg);
+  const latest = pts[pts.length - 1];
+  note.textContent = `${pts.length} recorded days · average ${fmt(mean(pts.map((p) => p.steps)))}/day · latest ${fmt(latest.steps)} (${fmtDate(latest.date)}${ago(latest.date)})`;
+}
+
 /* ---- week by week: training load beside how the nights went ---- */
 function renderWeeks() {
   const host = document.getElementById("weeks"), note = document.getElementById("weeks-note");
@@ -413,7 +461,6 @@ function renderSmalls() {
     ["Wrist temperature", (d) => d.wristTemperature, "°C", undefined, (v) => v.toFixed(2), (d) => d.wristTemperatureBaseline],
     ["Breathing disturbances", (d) => d.breathingDisturbances, "/night", undefined, (v) => v.toFixed(1)],
     ["Time in daylight", (d) => d.daylightMinutes, "min", undefined, (v) => `${Math.round(v)}`],
-    ["Steps", (d) => d.steps, "", undefined, (v) => Math.round(v).toLocaleString()],
   ];
   host.replaceChildren(...defs.map(([label, pick, unit, typ, fmt, base]) => {
     const pts = days.map((d) => ({ d, v: pick(d) })).filter((p) => p.v !== undefined);
@@ -436,7 +483,7 @@ function renderAll() {
   renderKpis(); renderRating(); renderSleep();
   renderDaily("rhr-chart", "rhr-note", (d) => d.restingHeartRate, (d) => d.restingHeartRateBaseline, "bpm", "var(--cat-2)");
   renderDaily("hrv-chart", "hrv-note", (d) => d.hrv, (d) => d.hrvBaseline, "ms", "var(--cat-3)");
-  renderWeeks(); renderSmalls();
+  renderSteps(); renderWeeks(); renderSmalls();
 }
 /* ---- patterns: the whole history, computed server-side; readings first, the tables they rest on beneath ---- */
 async function loadPatterns() {
@@ -496,6 +543,7 @@ function wireGroup(id, attr, onPick) {
 function init() {
   const t = readStored(THEME_STORAGE); if (t) document.documentElement.setAttribute("data-theme", t);
   wireGroup("range-group", "range", (v) => { state.range = v; load(); });
+  document.getElementById("toggle-steps-table").addEventListener("click", (e) => { const p = document.getElementById("steps-table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; e.target.setAttribute("aria-expanded", String(!p.hidden)); });
   document.getElementById("toggle-sleep-table").addEventListener("click", (e) => { const p = document.getElementById("sleep-table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderSleepTable(); });
   document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
@@ -504,7 +552,7 @@ function init() {
   const fromUrl = new URL(location.href).searchParams.get("key"); if (fromUrl) history.replaceState(null, "", location.pathname);
   const key = fromUrl || readStored(KEY_STORAGE); if (key) start(key); else signOut();
 }
-function signOut(msg) { state.key = ""; writeStored(KEY_STORAGE, ""); document.getElementById("app").hidden = true; const g = document.getElementById("gate"); g.hidden = false; const e = document.getElementById("gate-err"); e.hidden = !msg; if (msg) e.textContent = msg; document.getElementById("gate-key").focus(); }
+function signOut(msg) {  state.key = ""; writeStored(KEY_STORAGE, ""); document.getElementById("app").hidden = true; const g = document.getElementById("gate"); g.hidden = false; const e = document.getElementById("gate-err"); e.hidden = !msg; if (msg) e.textContent = msg; document.getElementById("gate-key").focus(); }
 function start(key) { state.key = key; writeStored(KEY_STORAGE, key); document.getElementById("gate").hidden = true; document.getElementById("app").hidden = false; load(); }
 init();
 </script>
