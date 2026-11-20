@@ -215,7 +215,7 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .tip-key { width: 10px; height: 2px; border-radius: 1px; background: var(--series-1); flex: none; }
 
 /* ---- Weekly goals ---- */
-.strip { display: flex; gap: 4px; margin: 12px 0 4px; }
+.strip { display: flex; gap: 4px; margin: 12px 0 4px; overflow-x: auto; padding-bottom: 4px; }
 .strip i {
   flex: 1; height: 14px; border-radius: 3px; min-width: 10px;
   background: var(--grid);
@@ -238,6 +238,8 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .week-now { background: var(--hover-wash); }
 /* On a phone the week table loses its right-hand columns, so each week becomes a card:
    verdict as the left edge, targets as chips, totals on one line. Same data, no table. */
+#goal-table { overflow-x: auto; }
+#goal-table table { min-width: 960px; }
 .goal-list { display: none; }
 .week-card { border: 1px solid var(--border); border-left: 4px solid var(--grid); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
 .week-card[data-v="perfect"] { border-left-color: var(--status-good); } .week-card[data-v="verygood"] { border-left-color: var(--cat-3); } .week-card[data-v="good"] { border-left-color: var(--series-1); } .week-card[data-v="short"] { border-left-color: var(--status-warn); }
@@ -250,6 +252,16 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .goal-head { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
 .goal-head b { color: var(--text-primary); font-weight: 600; }
 
+/* Recovery context stays separate from goal-verdict colours. */
+.recovery-panel { margin: 16px 0; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+#recovery-chart { overflow-x: auto; }
+.recovery-panel h3 { font-size: 13px; margin: 0 0 4px; }
+.recovery-panel p { margin: 4px 0 12px; }
+.week-effort { display:block; font-size:12px; margin-top:5px; color:var(--text-secondary); max-width:230px; overflow-wrap:anywhere; }
+.week-effort > span { font-size:16px; vertical-align:-1px; margin-right:2px; }
+.week-effort[data-band="recovery"] { color:var(--series-1); }
+.week-effort[data-band="higher"] { color:var(--text-primary); font-weight:600; }
+.recovery-badge { display: block; font-size: 11px; color: var(--series-1); margin-top: 5px; max-width: 230px; }
 /* ---- Calendar heatmap ---- */
 .cal-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); margin-top: 10px; }
 .cal-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
@@ -276,6 +288,21 @@ tbody tr:last-child td { border-bottom: 0; }
 .gate button { font: inherit; font-weight: 500; background: var(--series-1); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
 .err { color: #d03b3b; font-size: 12px; margin-top: 10px; }
 [hidden] { display: none !important; }
+
+.week-label { display: inline-block; max-width: 220px; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px; background: var(--surface-1); color: var(--text-secondary); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.week-label:hover { background: var(--hover-wash); }
+.week-label:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+#week-editor { color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: min(440px, calc(100% - 32px)); }
+#week-editor::backdrop { background: rgba(0,0,0,0.45); }
+#week-editor h2 { margin: 0 0 8px; font-size: 18px; }
+#week-editor p { color: var(--text-secondary); font-size: 13px; }
+#week-editor label { display: block; margin-top: 12px; font-size: 13px; }
+#week-editor input, #week-editor textarea { display: block; width: 100%; padding: 9px; margin-top: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--page); color: var(--text-primary); font: inherit; }
+#week-editor .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+#week-editor button { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--page); color: var(--text-primary); cursor: pointer; }
+#week-editor button:disabled { opacity: 0.5; cursor: wait; }
+#week-editor .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+
 </style>
 </head>
 <body>
@@ -359,6 +386,7 @@ tbody tr:last-child td { border-bottom: 0; }
         <h2>Weekly goals</h2>
         <span class="note" id="goal-spec"></span>
       </div>
+      <p class="note" id="recovery-guide">Planning guide: consider a lighter/recovery week every 4–8 weeks of sustained hard training. This is a starting point, not a fixed rule; adjust to fatigue and recovery.</p>
       <div class="goal-head" id="goal-head"></div>
       <div class="strip" id="goal-strip"></div>
       <div class="strip-legend">
@@ -367,6 +395,13 @@ tbody tr:last-child td { border-bottom: 0; }
         <span><i style="background:var(--series-1)"></i>Good — 5+ sessions</span>
         <span><i style="background:var(--status-warn)"></i>Short</span>
       </div>
+      <section class="recovery-panel" aria-labelledby="recovery-heading">
+        <h3 id="recovery-heading">Recovery weeks</h3>
+        <p class="note">Blue bars = lower recorded effort (60% of typical or less). Circled R = tagged rest/recovery. Grey bars = other weeks. The week in progress is not assessed.</p>
+        <div id="recovery-chart"></div>
+        <p class="note" id="recovery-count"></p>
+        <p class="note" id="effort-band-legend">Effort labels: 😴 recovery-level ≤60% · 🌿 lighter &gt;60% and &lt;90% · ⚖️ usual 90–110% · 🔥 above usual &gt;110%. Compared with the preceding 12-week median; independent of goals and manual tags.</p>
+      </section>
       <div id="goal-table"></div>
       <div id="goal-list" class="goal-list"></div>
     </div>
@@ -414,6 +449,17 @@ tbody tr:last-child td { border-bottom: 0; }
 
 <div class="tip" id="tip" role="status" aria-live="polite"></div>
 
+<dialog id="week-editor" aria-labelledby="week-editor-title">
+  <form id="week-editor-form">
+    <h2 id="week-editor-title">Label week</h2>
+    <p>Context for your history. Labels do not change goals, verdicts, or streaks.</p>
+    <div class="presets"><button type="button" data-week-label="Rest week">Rest week</button><button type="button" data-week-label="Vacation">Vacation</button><button type="button" data-week-label="Illness">Illness</button><button type="button" data-week-label="Travel">Travel</button></div>
+    <label>Label (or write your own)<input id="week-label-input" maxlength="60" autocomplete="off"></label>
+    <label>Optional note<textarea id="week-note-input" maxlength="500" rows="3"></textarea></label>
+    <p id="week-editor-error" role="alert" hidden></p>
+    <div class="actions"><button id="week-save" type="submit">Save</button><button id="week-remove" type="button">Remove label</button><button id="week-cancel" type="button">Cancel</button></div>
+  </form>
+</dialog>
 <script type="module">
 "use strict";
 
@@ -1117,10 +1163,12 @@ function renderGoals() {
   const table = document.getElementById("goal-table");
   if (!report || !report.weeks?.length) {
     spec.textContent = ""; head.replaceChildren(); strip.replaceChildren(); table.replaceChildren();
+    document.getElementById("recovery-chart").replaceChildren(); document.getElementById("recovery-count").textContent = "";
     return;
   }
 
   const weeks = report.weeks;
+  renderRecoveryWeeks(weeks);
   const labelOf = Object.fromEntries(weeks.flatMap((wk) => wk.targets.map((t) => [t.activityType, t.label])));
   spec.textContent = report.spec.targets.map((t) => `${t.sessions}× ${labelOf[t.activityType] ?? t.activityType}`).join(" · ")
     + ` · good week = ${report.spec.goodWeekSessions}+ sessions · very good = ${report.spec.veryGoodWeekSessions}+ with ${report.spec.veryGoodWeekMinimums.map((m) => `${m.sessions}× ${labelOf[m.activityType] ?? m.activityType}`).join(", ")}`
@@ -1149,7 +1197,7 @@ function renderGoals() {
     const cell = document.createElement("i");
     cell.dataset.v = wk.verdict;
     if (i === weeks.length - 1) cell.style.opacity = "0.45"; // in progress, not yet judged
-    cell.title = `${fmtWeek(wk.weekStart)} — ${VERDICT_LABEL[wk.verdict]}, ${wk.totalSessions} sessions`;
+    cell.title = `${fmtWeek(wk.weekStart)} — ${VERDICT_LABEL[wk.verdict]}, ${wk.totalSessions} sessions${wk.annotation ? ` · ${wk.annotation.label}${wk.annotation.note ? ` — ${wk.annotation.note}` : ""}` : ""}`;
     cell.setAttribute("role", "img");
     cell.setAttribute("aria-label", cell.title);
     return cell;
@@ -1158,12 +1206,13 @@ function renderGoals() {
   // Goals can change over time: the columns are every target any shown week had, in order of first appearance.
   const targetTypes = []; for (const wk of weeks) for (const t of wk.targets) if (!targetTypes.includes(t.activityType)) targetTypes.push(t.activityType);
   const labelAll = {}; for (const wk of weeks) for (const t of wk.targets) labelAll[t.activityType] = t.label;
-  const headers = ["Week", "Verdict",
+  const headers = ["Week", "Verdict", "Context",
     ...targetTypes.map((a) => ({ text: labelAll[a] ?? a, num: false })),
     { text: "Other", num: true }, { text: "Sessions", num: true }, { text: "Time", num: true }, { text: "Effort", num: true }];
   const rows = [...weeks].reverse().map((wk, i) => [
     fmtWeek(wk.weekStart) + (i === 0 ? " (so far)" : ""),
     { el: verdictEl(wk.verdict) },
+    { el: weekContext(wk) },
     ...targetTypes.map((a) => { const t = wk.targets.find((x) => x.activityType === a); return t ? { el: dotsEl(t.actual, t.sessions) } : { text: "—" }; }),
     { text: `${wk.otherSessions || ""}`, num: true },
     { text: `${wk.totalSessions}`, num: true },
@@ -1188,10 +1237,104 @@ function renderGoals() {
     const time = document.createElement("span"); time.textContent = formatDuration(wk.durationSeconds);
     const effort = document.createElement("span"); effort.append(document.createTextNode("effort "), effortCell(wk));
     meta.append(time, effort);
-    card.append(row, chips, meta);
+    card.append(row, chips, meta, weekContext(wk));
     return card;
   }));
 }
+
+function recoveryDescription(week) {
+  const r = week.recovery;
+  if (!r) return "Not assessed";
+  const reasons = [];
+  if (r.taggedRest) reasons.push(r.complete ? "Tagged rest/recovery" : "Tagged rest/recovery (in progress)");
+  if (r.lowerEffort) reasons.push(`Lower effort · ${Math.round(r.effortPercent)}% of typical`);
+  if (reasons.length) return reasons.join(" + ");
+  if (!r.complete) return "In progress · not assessed";
+  return r.effortPercent === undefined ? "No effort baseline" : "Not a recovery week by these rules";
+}
+function weekContext(week) {
+  const el = document.createElement("div"); el.appendChild(weekLabelButton(week));
+  const r = week.recovery;
+  const band = r?.effortBand || "unknown";
+  const labels = { recovery: ["😴", "Recovery-level effort"], lighter: ["🌿", "Lighter effort"], usual: ["⚖️", "Usual effort"], higher: ["🔥", "Above-usual effort"], "in-progress": ["⏳", "Week in progress"], unknown: ["❔", "No effort baseline"] };
+  const [emoji, label] = labels[band] || labels.unknown;
+  const badge = document.createElement("span"); badge.className = "week-effort"; badge.dataset.band = band;
+  const symbol = document.createElement("span"); symbol.setAttribute("aria-hidden", "true"); symbol.textContent = emoji;
+  const percent = r?.effortPercent === undefined ? "" : ` · ${Math.round(r.effortPercent)}% of usual${band === "in-progress" ? " so far" : ""}`;
+  badge.append(symbol, document.createTextNode(` ${label}${percent}`)); el.appendChild(badge);
+  if (r?.taggedRest) {
+    const tag = document.createElement("span"); tag.className = "recovery-badge";
+    tag.textContent = r.complete ? "🛌 Tagged rest/recovery" : "🛌 Rest/recovery tag (in progress)";
+    el.appendChild(tag);
+  }
+  return el;
+}
+function renderRecoveryWeeks(weeks) {
+  const host = document.getElementById("recovery-chart");
+  const width = Math.max(280, host.clientWidth || 800, weeks.length * 18 + 54), left = 42, right = 12, top = 24, plotH = 110, height = 164;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "group", "aria-label": "Weekly effort as a percentage of typical. Blue bars are lower-effort weeks; circled R marks rest labels." });
+  svg.style.width = `${width}px`;
+  const values = weeks.filter((w) => w.recovery?.complete && w.recovery.effortPercent !== undefined).map((w) => w.recovery.effortPercent);
+  const ticks = niceTicks(Math.max(120, ...values), 3), max = ticks[ticks.length - 1];
+  const y = (v) => top + plotH * (1 - v / max), step = (width - left - right) / weeks.length;
+  for (const value of ticks) { svg.appendChild(svgEl("line", { class: "grid-line", x1: left, x2: width - right, y1: y(value), y2: y(value) })); svg.appendChild(svgText(left - 6, y(value) + 4, `${Math.round(value)}%`, { "text-anchor": "end" })); }
+  const labelEvery = Math.max(1, Math.ceil(weeks.length / Math.max(2, Math.floor((width - left - right) / 70))));
+  weeks.forEach((week, i) => {
+    const r = week.recovery, x = left + step * (i + 0.5), barW = Math.max(2, step * 0.65);
+    const hit = svgEl("rect", { class: "hit", x: left + i * step, y: 4, width: step, height: plotH + top }); svg.appendChild(hit);
+    const marks = svgEl("g", { class: "mark" });
+    if (r?.complete && r.effortPercent !== undefined) marks.appendChild(svgEl("rect", { x: x - barW / 2, y: y(r.effortPercent), width: barW, height: Math.max(2, y(0) - y(r.effortPercent)), rx: 2, style: `fill:${r.lowerEffort ? "var(--series-1)" : "var(--text-muted)"};opacity:${r.lowerEffort ? 1 : 0.4}` }));
+    else marks.appendChild(svgText(x, top + plotH / 2, r?.complete ? "—" : "…", { "text-anchor": "middle" }));
+    if (r?.taggedRest) { marks.appendChild(svgEl("circle", { cx: x, cy: 12, r: 8, style: "fill:var(--surface-1);stroke:var(--series-1);stroke-width:1.5" })); marks.appendChild(svgText(x, 15, "R", { "text-anchor": "middle", style: "fill:var(--series-1);font-size:9px;font-weight:600" })); }
+    svg.appendChild(marks);
+    attachTip(hit, `Week of ${fmtWeek(week.weekStart)}`, [["", recoveryDescription(week), null], ["recorded effort", `${Math.round(week.effort)}`, null], ...(r?.complete && r.effortPercent !== undefined ? [["of typical", `${Math.round(r.effortPercent)}%`, null], ["typical effort", `${Math.round(week.typicalEffort)}`, null]] : [])]);
+    if (i % labelEvery === 0) svg.appendChild(svgText(x, top + plotH + 18, fmtWeek(week.weekStart), { "text-anchor": "middle" }));
+  });
+  svg.appendChild(svgEl("line", { x1: left, x2: width - right, y1: y(60), y2: y(60), style: "stroke:var(--series-1);stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none" }));
+  svg.appendChild(svgText(width - right, y(60) - 5, "60% recovery threshold", { "text-anchor": "end", style: "fill:var(--series-1);pointer-events:none" }));
+  host.replaceChildren(svg);
+  const completed = weeks.filter((w) => w.recovery?.complete), matched = completed.filter((w) => w.recovery.taggedRest || w.recovery.lowerEffort);
+  document.getElementById("recovery-count").textContent = `${matched.length} of ${completed.length} completed weeks match · ${completed.filter((w) => w.recovery.taggedRest).length} tagged rest/recovery · ${completed.filter((w) => w.recovery.lowerEffort).length} lower effort (a week can be both). Low recorded effort does not prove recovery if workouts were not logged.`;
+}
+
+function weekLabelButton(week) {
+  const button = document.createElement("button"); button.type = "button"; button.className = "week-label";
+  button.textContent = week.annotation?.label || "+ Label week";
+  button.title = week.annotation?.note || "Add context such as rest, vacation, or travel";
+  button.setAttribute("aria-label", `${week.annotation ? "Edit" : "Add"} label for ${fmtWeek(week.weekStart)}${week.annotation ? `: ${week.annotation.label}${week.annotation.note ? ` — ${week.annotation.note}` : ""}` : ""}`);
+  button.addEventListener("click", () => {
+    const editor = document.getElementById("week-editor"); editor.dataset.week = week.weekStart;
+    document.getElementById("week-editor-title").textContent = `Week of ${fmtWeek(week.weekStart)}`;
+    document.getElementById("week-label-input").value = week.annotation?.label || "";
+    document.getElementById("week-note-input").value = week.annotation?.note || "";
+    document.getElementById("week-editor-error").hidden = true;
+    document.getElementById("week-remove").hidden = !week.annotation;
+    editor.showModal(); document.getElementById("week-label-input").focus();
+  });
+  return button;
+}
+async function saveWeekLabel(remove = false) {
+  const editor = document.getElementById("week-editor"), error = document.getElementById("week-editor-error");
+  const weekStart = editor.dataset.week;
+  const label = remove ? "" : document.getElementById("week-label-input").value.trim();
+  const note = remove ? "" : document.getElementById("week-note-input").value.trim();
+  error.hidden = true;
+  for (const id of ["week-save", "week-remove"]) document.getElementById(id).disabled = true;
+  try {
+    const response = await fetch("/api/weekly/annotation", { method: "POST", headers: { "x-api-key": state.key, "content-type": "application/json" }, body: JSON.stringify({ weekStart, label, note }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Could not save the label. Please try again.");
+    const week = state.weekly?.weeks.find((w) => w.weekStart === weekStart);
+    if (week) { if (result.annotation) week.annotation = result.annotation; else delete week.annotation; }
+    state.weekly = await api("/api/weekly", { weeks: state.weekly.weeks.length, until: state.to ?? "today" });
+    editor.close(); renderGoals();
+  } catch (e) { error.textContent = e.message; error.hidden = false; }
+  finally { for (const id of ["week-save", "week-remove"]) document.getElementById(id).disabled = false; }
+}
+document.getElementById("week-editor-form").addEventListener("submit", (e) => { e.preventDefault(); saveWeekLabel(); });
+document.getElementById("week-remove").addEventListener("click", () => saveWeekLabel(true));
+document.getElementById("week-cancel").addEventListener("click", () => document.getElementById("week-editor").close());
+for (const button of document.querySelectorAll("[data-week-label]")) button.addEventListener("click", () => { document.getElementById("week-label-input").value = button.dataset.weekLabel; });
 
 /** "312 ▲30%" — the number, then how it sits against the twelve weeks before it. */
 function effortCell(wk) {
@@ -1737,7 +1880,7 @@ function initControls() {
   let resizeTimer;
   addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { if (state.summary) { renderTrend(); renderActivities(); renderWeight(); } }, 120);
+    resizeTimer = setTimeout(() => { if (state.summary) { renderTrend(); renderActivities(); renderWeight(); if (state.weekly) renderRecoveryWeeks(state.weekly.weeks); } }, 120);
   });
 }
 

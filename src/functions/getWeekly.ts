@@ -1,10 +1,11 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
 import { config } from "../config/index.js";
 import { reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../domain/goals.js";
+import { weekRecovery } from "../domain/weekRecovery.js";
 import { startOfIsoWeek } from "../domain/summary.js";
 import { isAuthorised } from "../http/auth.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
-import { getRepository } from "./shared.js";
+import { getRepository, getSettingsRepository } from "./shared.js";
 
 /**
  * `GET /api/weekly?weeks=12&until=YYYY-MM-DD`
@@ -31,7 +32,8 @@ export async function getWeekly(request: HttpRequest, context: InvocationContext
     return badRequest(`'weeks' must be an integer between 1 and ${MAX_WEEKS}`);
   }
 
-  const { from, to } = resolveWindow(params.get("until"), weeks, new Date());
+  const now = new Date();
+  const { from, to } = resolveWindow(params.get("until"), weeks, now);
   if (!from) return badRequest(`'until' is not a valid date`);
 
   try {
@@ -40,7 +42,9 @@ export async function getWeekly(request: HttpRequest, context: InvocationContext
     // has a "typical" to stand against.
     const leadIn = new Date(from.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
     const workouts = await repository.listAll({ from: leadIn, to });
-    return ok(reviewWeeks(workouts, settings.goalSchedule, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS }));
+    const report = reviewWeeks(workouts, settings.goalSchedule, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+    const annotations = await (await getSettingsRepository()).datedRange<{ label: string; note: string }>("week.annotation.", from.toISOString().slice(0, 10), to.toISOString().slice(0, 10));
+    return ok({ ...report, weeks: report.weeks.map((week) => ({ ...week, recovery: weekRecovery(week, annotations[week.weekStart], now), ...(annotations[week.weekStart] ? { annotation: annotations[week.weekStart] } : {}) })) });
   } catch (error) {
     context.error("Failed to build weekly review", error);
     return serverError("Failed to build weekly review");

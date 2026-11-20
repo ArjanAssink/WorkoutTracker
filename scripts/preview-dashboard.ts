@@ -18,6 +18,11 @@ import { resolveRange } from "../src/http/dateRange.js";
 import { DEFAULT_GOALS, reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../src/domain/goals.js";
 import { resolveWindow } from "../src/functions/getWeekly.js";
 
+import { weekRecovery } from "../src/domain/weekRecovery.js";
+import { parseWeekAnnotation, type WeekAnnotation } from "../src/domain/weekAnnotation.js";
+
+// Preview labels are deliberately temporary; the Function API persists real labels.
+const annotations = new Map<string, WeekAnnotation>();
 const PORT = Number(process.env["PREVIEW_PORT"] ?? 7099);
 const KEY = "preview";
 const PAGE = new URL("../../public/index.html", import.meta.url);
@@ -127,6 +132,16 @@ createServer(async (request, response) => {
 
   if (request.headers["x-api-key"] !== KEY) return json(401, { error: "Invalid or missing API key" });
 
+  if (url.pathname === "/api/weekly/annotation" && request.method === "POST") {
+    try {
+      let body = "";
+      for await (const chunk of request) { body += chunk.toString(); if (body.length > 16000) return json(413, { error: "Annotation too large" }); }
+      const parsed = parseWeekAnnotation(JSON.parse(body));
+      if (parsed.annotation) annotations.set(parsed.weekStart, parsed.annotation); else annotations.delete(parsed.weekStart);
+      return json(200, parsed);
+    } catch (error) { return json(400, { error: error instanceof Error ? error.message : "Invalid annotation" }); }
+  }
+
   const range = resolveRange(url.searchParams);
   // Honour activityType exactly as the real endpoints do — a harness that silently drops a
   // filter reports success for a broken dashboard.
@@ -149,7 +164,8 @@ createServer(async (request, response) => {
     if (!from) return json(400, { error: "'until' is not a valid date" });
     const leadIn = new Date(from.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
     const inWindow = ALL.filter((w) => { const at = new Date(w.startedAt); return at >= leadIn && at < to; });
-    return json(200, reviewWeeks(inWindow, DEFAULT_GOALS, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS }));
+    const report = reviewWeeks(inWindow, DEFAULT_GOALS, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+    return json(200, { ...report, weeks: report.weeks.map((week) => ({ ...week, recovery: weekRecovery(week, annotations.get(week.weekStart), new Date()), ...(annotations.has(week.weekStart) ? { annotation: annotations.get(week.weekStart) } : {}) })) });
   }
   if (url.pathname === "/api/summary") {
     const granularity = (url.searchParams.get("granularity") ?? "week") as Granularity;
