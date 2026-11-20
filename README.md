@@ -113,6 +113,8 @@ buckets quietly becomes "per active week" rather than "per week".
 
 ## The dashboard
 
+Use your browser’s **Add to Home Screen** or **Install app** option for a standalone window with the Workout Tracker icon. The manifest, Android maskable icons, and iPhone touch icon are served by the Function App. A branded loading screen appears while the app starts, with native portrait launch images for common iPhone sizes. Returning to the app checks for new app files; updates reload automatically unless an editor or text input is active. **Refresh app** at the bottom right clears app-managed caches and loads a fresh page while retaining the saved API key and theme. iOS can retain its home-screen icon or native launch image separately; re-adding the shortcut may be needed to update those. This does not add offline access or cache your health data.
+
 `https://<your-domain>/api/dashboard`
 
 A single page, served by the Function App itself — no second resource, no CORS, nothing to
@@ -177,6 +179,8 @@ that ships; only the rows are invented. No Azure account and no Functions host n
 ---
 
 ## Weekly goals and the Monday summary
+
+In the dashboard’s weekly listing, select **+ Label week** to add context such as **Rest week**, **Vacation**, **Illness**, **Travel**, or your own label, with an optional note. Labels are saved across devices and can be edited or removed. The Monday Telegram summary reports how many weeks ago the last tagged rest week and last lower-effort week occurred, looking back up to 52 completed weeks. Rest labels are Rest/Rest week, Deload/Deload week, or Recovery week; other labels stay informational. A lower-effort week is at least 40% below the preceding 12-week median of recorded effort (at least four prior weeks required). The weekly overview includes a recovery chart: blue bars show completed weeks at or below 60% of their prior typical effort, and circled R markers show manually tagged rest/recovery weeks. Every desktop row and mobile card has an emoji effort badge: 😴 recovery-level (≤60% of typical), 🌿 lighter (>60% and <90%), ⚖️ usual (90–110%), or 🔥 above usual (>110%). Bands use recorded effort only, independent of goals and manual rest tags. In-progress and missing-baseline weeks have separate labels. In-progress weeks are not automatically classified. The dashboard and push summary also show a general planning guide: consider a lighter/recovery week every 4–8 weeks of sustained hard training, adjusted to fatigue and recovery rather than treated as a fixed requirement. Rest/deload/recovery tags also make check-ins recovery-focused, pause training milestone pushes, and add context to Monday summaries. They do not change the stored goals, verdicts, totals, or streaks.
 
 A week is judged two independent ways, and that is the point:
 

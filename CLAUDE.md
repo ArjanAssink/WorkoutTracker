@@ -157,6 +157,8 @@ against every other, and relabelling a slug changes identity.
 
 ## Working agreements
 
+Commit source changes and push the individual commits to GitHub as part of completing code work. Preserve existing commits; do not squash or rewrite them unless the user asks. Verify the remote contains the new commits. Direct Azure deployment does not publish source changes to GitHub.
+
 Deploy and verify without asking; never leave test rows in the live tables (date them
 2030+ and delete after); say what was inferred versus tested — two iOS claims in this
 project turned out false; render a change and look at it before calling it done.
