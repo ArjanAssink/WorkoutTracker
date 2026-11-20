@@ -1017,6 +1017,8 @@ npm run typecheck # tsc --noEmit
 
 ## Deploying to Azure
 
+All production deployments, including infrastructure provisioning, must execute through GitHub Actions. The commands below describe setup requirements; they are not a local-deployment fallback. Extend the repository workflow if infrastructure changes need automation.
+
 Four resource providers must be registered on the subscription first; this is a one-time,
 subscription-wide step and takes a couple of minutes:
 
@@ -1041,16 +1043,9 @@ az deployment group create \
 Keep `$KEY` — it is the Shortcut's credential and is not readable back from the portal.
 
 The deployment takes a few minutes and prints the app name, the ingest endpoint and the
-dashboard URL. Push the code with either the GitHub Actions workflow below or, from your
-machine:
-
-```bash
-npm run build
-az functionapp deployment source config-zip -g workout-tracker -n <functionAppName> --src app.zip
-```
-
-> Azure Functions Core Tools (`func`) is **not** required. If you do have it installed,
-> `func azure functionapp publish <app>` works too.
+dashboard URL. Deploy application code only through the GitHub Actions Deploy workflow
+below, from committed and pushed source. Direct deployment from a local machine or agent
+workspace is not supported by this project's deployment policy; see `AGENTS.md`.
 
 ### Wiring up GitHub Actions
 
@@ -1073,12 +1068,9 @@ credentials exist. Until then the job **skips** — it is off by default precise
 workflow that cannot possibly succeed does not sit red on every push and train you to
 ignore CI.
 
-Deploying by hand meanwhile:
-
-```bash
-npm run build
-az functionapp deployment source config-zip -g workout-tracker -n <app> --src app.zip
-```
+After setup, push committed changes to `main` or use the Deploy workflow's **Run workflow**
+action. Verify the run succeeded for the intended commit, then check the live app. If the
+job is skipped or fails, resolve that blocker; do not deploy directly to Azure instead.
 
 ### Custom domain
 

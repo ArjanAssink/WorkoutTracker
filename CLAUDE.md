@@ -19,10 +19,7 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   584 training-max values (the long-term workbook), 1,031 logged exercise rows from the
   weekly block log (`Cable Rack Summer 2025`, Aug 2025 → Oct 2026). Effort was last rescored under the
   current model on 2026-10-11.
-- **CI deploy is not wired.** `.github/workflows/deploy.yml` is OIDC-shaped and skips while
-  `DEPLOY_ENABLED=false`. Flex Consumption has no publish profile; `scripts/setup-github-oidc.sh`
-  does the one-time wiring but needs an Entra app registration, which the assistant's
-  permission policy blocked. Until then **deploy by hand** (below).
+- **Deployment policy:** every deployment must use `.github/workflows/deploy.yml` through GitHub Actions. It uses OIDC and is gated by `DEPLOY_ENABLED=true`. Verify the current repository configuration and workflow result; if prerequisites are missing, complete setup or report the blocker. Never fall back to direct Azure deployment. See `AGENTS.md` for the required source-control and deployment rules.
 - **Telegram** is configured (bot token + chat id in app settings). Three senders: the
   Monday 10:00 summary, the Thursday 18:00 check-in, and milestones fired from the ingest
   paths (`notifyMilestones.ts`, state in the `milestones` table, one announcement per key
@@ -68,14 +65,11 @@ npm run dedupe -- --dry-run            # the same session recorded twice (Wahoo 
 WORKOUT_KEY=$(…) node scripts/dev/screenshot.cjs "$WORKOUTS_URL/api/strength" out.png dark
 ```
 
-**Deploy by hand** (what every deploy in this project has actually been):
-
-```bash
-npm run build && rm -rf /tmp/pkg && mkdir /tmp/pkg \
- && cp host.json package.json package-lock.json /tmp/pkg/ && cp -r dist public /tmp/pkg/ \
- && rm -rf /tmp/pkg/dist/scripts && (cd /tmp/pkg && npm ci --omit=dev && zip -qr ../app.zip .) \
- && az functionapp deployment source config-zip -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_FUNCTION_APP" --src /tmp/app.zip
-```
+**Deploy through GitHub Actions only:** commit and push the changes, then monitor the
+Deploy workflow for that exact commit. It runs on pushes to `main` or can be started
+with `workflow_dispatch`. Confirm the run succeeded, rather than skipped, before live
+verification. Missing OIDC credentials or disabled deployment are setup blockers; direct
+Azure upload is not an approved fallback.
 
 Takes 2–4 minutes and **rolls out per instance**: right after a deploy some requests hit
 old code. Verify by polling until five consecutive responses agree, never with one request.
@@ -157,9 +151,9 @@ against every other, and relabelling a slug changes identity.
 
 ## Working agreements
 
-Commit source changes and push the individual commits to GitHub as part of completing code work. Preserve existing commits; do not squash or rewrite them unless the user asks. Verify the remote contains the new commits. Direct Azure deployment does not publish source changes to GitHub.
+Commit source changes and push the individual commits to GitHub as part of completing code work. Preserve existing commits; do not squash or rewrite them unless the user asks. Verify the remote contains the new commits. Every deployment must use GitHub Actions from committed and pushed code, as required in `AGENTS.md`; never deploy directly to Azure.
 
-Deploy and verify without asking; never leave test rows in the live tables (date them
+Run the GitHub Actions deployment and verify it without asking when already authorized; never leave test rows in the live tables (date them
 2030+ and delete after); say what was inferred versus tested — two iOS claims in this
 project turned out false; render a change and look at it before calling it done.
 
