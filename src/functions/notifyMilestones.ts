@@ -2,12 +2,14 @@ import { app, type HttpRequest, type HttpResponseInit, type InvocationContext, t
 import { config } from "../config/index.js";
 import { reviewWeeks, specFor, TYPICAL_WINDOW_WEEKS } from "../domain/goals.js";
 import { composeCheckIn, detectMilestones, type Milestone } from "../domain/milestones.js";
+import { isRestWeekLabel } from "../domain/weekRecovery.js";
+import type { WeekAnnotation } from "../domain/weekAnnotation.js";
 import { startOfIsoWeek } from "../domain/summary.js";
 import type { Workout } from "../domain/workout.js";
 import { isAuthorised } from "../http/auth.js";
 import { json, ok, unauthorised } from "../http/responses.js";
 import { sendTelegram } from "./notifyWeekly.js";
-import { getMilestoneRepository, getRepository } from "./shared.js";
+import { getMilestoneRepository, getRepository, getSettingsRepository } from "./shared.js";
 
 /**
  * Messages between the Monday summaries.
@@ -43,6 +45,12 @@ export async function evaluateMilestones(arrived: Workout[], now: Date): Promise
   const weekKey = weekStart.toISOString().slice(0, 10);
   const touched = arrived.filter((w) => { const t = Date.parse(w.startedAt); return t >= weekStart.getTime() && t < weekEnd.getTime(); });
   if (touched.length === 0) return { weekStart: weekKey, due: [], alreadySent: [], toMark: [] };
+
+  const annotation = await (await getSettingsRepository()).get<WeekAnnotation>(`week.annotation.${weekKey}`);
+  if (isRestWeekLabel(annotation)) {
+    const sent = await (await getMilestoneRepository()).sentKeys(weekKey);
+    return { weekStart: weekKey, due: [], alreadySent: [...sent], toMark: [] };
+  }
 
   const from = new Date(weekStart.getTime() - LOOKBACK_WEEKS * WEEK_MS);
   const history = await (await getRepository()).listAll({ from, to: weekEnd });
@@ -107,7 +115,8 @@ export async function buildCheckIn(now: Date): Promise<{ text: string | undefine
   const week = report.current;
   const weekKey = weekStart.toISOString().slice(0, 10);
   if (!week) return { text: undefined, weekStart: weekKey };
-  return { text: composeCheckIn(week, specFor(settings.goalSchedule, weekKey), now, TIMEZONE, report.baseline?.medianSessions), weekStart: weekKey };
+  const annotation = await (await getSettingsRepository()).get<WeekAnnotation>(`week.annotation.${weekKey}`);
+  return { text: composeCheckIn(week, specFor(settings.goalSchedule, weekKey), now, TIMEZONE, report.baseline?.medianSessions, annotation), weekStart: weekKey };
 }
 
 /** Thursdays at 16:00 and 17:00 UTC; sends only when it is 18:00 in Amsterdam (see weeklyTimer). */

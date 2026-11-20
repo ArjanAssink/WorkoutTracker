@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_GOALS, reviewWeeks } from "../src/domain/goals.js";
-import { composeWeeklySummary, effortLine, escape } from "../src/domain/weeklySummary.js";
+import { composeWeeklySummary, effortLine, escape, restContextLines } from "../src/domain/weeklySummary.js";
 import type { Workout } from "../src/domain/workout.js";
 
 let n = 0;
@@ -109,4 +109,55 @@ describe("effortLine", () => {
     expect(effortLine(wk(400, 250))).toBe("Effort 400 — a hard week, 60% above your typical (250)");
     expect(effortLine(wk(100, 250))).toBe("Effort 100 — a light week, 60% below your typical (250)");
   });
+});
+
+
+describe("rest context", () => {
+  const current = reviewWeeks(perfect, DEFAULT_GOALS, from, to).current!;
+  const week = (weekStart: string, effort = 100, typicalEffort = 100) => ({ ...current, weekStart, effort, typicalEffort });
+  it("reports weeks since a rest label separately from low recorded effort", () => {
+    const weeks = [week("2026-02-23"), week("2026-03-02", 50), week("2026-03-09")];
+    const lines = restContextLines(current, { weeks, annotations: { "2026-02-23": { label: "Rest week", note: "" } } });
+    expect(lines[0]).toContain("Tagged rest: 2 weeks ago");
+    expect(lines[1]).toContain("Lower effort: 1 week ago");
+    expect(lines[1]).toContain("50% of typical");
+  });
+  it("recognises deload labels without assuming vacation is rest", () => {
+    const weeks = [week("2026-02-23"), week("2026-03-02"), week("2026-03-09")];
+    const lines = restContextLines(current, { weeks, annotations: { "2026-02-23": { label: " DELOAD week ", note: "" }, "2026-03-02": { label: "Vacation", note: "" } } });
+    expect(lines[0]).toContain("2 weeks ago");
+  });
+  it("includes the reviewed week and uses the exact 60% threshold", () => {
+    expect(restContextLines(current, { weeks: [week(current.weekStart, 60)], annotations: {} })[1]).toContain("the week just reviewed");
+    expect(restContextLines(current, { weeks: [week(current.weekStart, 60.1)], annotations: {} })[1]).toContain("No lower-effort week");
+  });
+  it("ignores unfinished and future weeks", () => {
+    const lines = restContextLines(current, { weeks: [week("2026-03-16", 0), week(current.weekStart)], annotations: { "2026-03-16": { label: "Rest week", note: "" } } });
+    expect(lines[0]).toContain("No tagged rest week"); expect(lines[1]).toContain("No lower-effort week");
+  });
+  it("does not fabricate comparisons without a positive baseline", () => {
+    const noBaseline = { ...current }; delete noBaseline.typicalEffort;
+    expect(restContextLines(current, { weeks: [noBaseline, week("2026-03-02", 0, 0)], annotations: {} })[1]).toContain("not enough history");
+  });
+  it("counts zero recorded effort as light only when a baseline exists", () => {
+    expect(restContextLines(current, { weeks: [week(current.weekStart, 0, 100)], annotations: {} })[1]).toContain("0% of typical");
+  });
+  it("can find a rest label older than the 12-week message window", () => {
+    expect(restContextLines(current, { weeks: [week("2025-09-01"), current], annotations: { "2025-09-01": { label: "Rest", note: "" } } })[0]).toContain("27 weeks ago");
+  });
+  it("adds the context to the composed message without changing its review", () => {
+    const report = reviewWeeks(perfect, DEFAULT_GOALS, from, to);
+    const original = composeWeeklySummary(report);
+    expect(composeWeeklySummary(report, { weeks: report.weeks, annotations: {} })).toContain(original);
+    expect(composeWeeklySummary(report, { weeks: report.weeks, annotations: {} })).toContain("No tagged rest week");
+  });
+});
+
+
+it("reviews tagged rest weeks without a shortfall message or target checklist", () => {
+  const report = reviewWeeks(perfect.slice(0, 1), DEFAULT_GOALS, from, to);
+  const text = composeWeeklySummary(report, { weeks: report.weeks, annotations: { "2026-03-09": { label: "Rest week", note: "Planned <break>" } } });
+  expect(text).toContain("REST / RECOVERY"); expect(text).toContain("1 session");
+  expect(text).toContain("Recovery was the focus"); expect(text).toContain("Planned &lt;break&gt;");
+  expect(text).not.toMatch(/SHORT|Short by|Missed|Last .* weeks:|○/);
 });

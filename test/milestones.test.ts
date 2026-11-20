@@ -165,3 +165,21 @@ describe("composeCheckIn", () => {
     expect(composeCheckIn(review(perfect), DEFAULT_GOALS, thursday, TZ)).toBeUndefined();
   });
 });
+
+
+it("replaces catch-up goals with recovery context, even after targets are met", () => {
+  const now = new Date("2026-03-12T17:00:00Z");
+  const empty = reviewWeeks([], DEFAULT_GOALS, WEEK_START, WEEK_END).current!;
+  for (const verdict of ["short", "perfect"] as const) {
+    const text = composeCheckIn({ ...empty, verdict }, DEFAULT_GOALS, now, TZ, 5, { label: "Rest week", note: "Take <time> & recover" })!;
+    expect(text).toContain("😴"); expect(text).toContain("Recovery is the focus");
+    expect(text).toContain("Take &lt;time&gt; &amp; recover");
+    expect(text).not.toMatch(/For a perfect week|more for a good week|typical week ends|to go/);
+  }
+});
+
+it("does not silently treat an arbitrary context label as a rest request", () => {
+  const empty = reviewWeeks([], DEFAULT_GOALS, WEEK_START, WEEK_END).current!;
+  const text = composeCheckIn(empty, DEFAULT_GOALS, new Date("2026-03-12T17:00:00Z"), TZ, 5, { label: "Conference", note: "" })!;
+  expect(text).toContain("For a perfect week");
+});

@@ -1,11 +1,12 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext, type Timer } from "@azure/functions";
 import { config } from "../config/index.js";
 import { reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../domain/goals.js";
-import { composeWeeklySummary } from "../domain/weeklySummary.js";
+import { isRestWeekLabel } from "../domain/weekRecovery.js";
+import { composeWeeklySummary, restWeekFocus } from "../domain/weeklySummary.js";
 import { isAuthorised } from "../http/auth.js";
 import { json, ok, unauthorised } from "../http/responses.js";
 import { resolveWindow } from "./getWeekly.js";
-import { getRepository } from "./shared.js";
+import { getRepository, getSettingsRepository } from "./shared.js";
 
 /**
  * The Monday-morning summary, delivered to Telegram.
@@ -16,6 +17,7 @@ import { getRepository } from "./shared.js";
  */
 
 const REVIEW_WEEKS = 12;
+const REST_HISTORY_WEEKS = 52;
 const TIMEZONE = "Europe/Amsterdam";
 const SEND_HOUR_LOCAL = 10;
 
@@ -27,10 +29,18 @@ export async function buildSummary(now: Date): Promise<{ text: string; weekStart
   const settings = config();
   const { from, to } = resolveWindow(null, REVIEW_WEEKS, now);
   const repository = await getRepository();
-  const leadIn = new Date(from!.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
-  const workouts = await repository.listAll({ from: leadIn, to });
+  const historyFrom = resolveWindow(null, REST_HISTORY_WEEKS, now).from!;
+  const leadIn = new Date(historyFrom.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
+  const [workouts, annotations] = await Promise.all([
+    repository.listAll({ from: leadIn, to }),
+    (await getSettingsRepository()).datedRange<import("../domain/weekAnnotation.js").WeekAnnotation>("week.annotation.", historyFrom.toISOString().slice(0, 10), new Date(to.getTime() + 7 * 86400000).toISOString().slice(0, 10)),
+  ]);
   const report = reviewWeeks(workouts, settings.goalSchedule, from!, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
-  return { text: composeWeeklySummary(report), weekStart: report.current?.weekStart };
+  const history = reviewWeeks(workouts, settings.goalSchedule, historyFrom, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+  const thisWeek = annotations[to.toISOString().slice(0, 10)];
+  let text = composeWeeklySummary(report, { weeks: history.weeks, annotations });
+  if (isRestWeekLabel(thisWeek) && thisWeek) text += ["", "", "😴 <b>This week: rest / recovery</b>", ...restWeekFocus(thisWeek)].join("\n");
+  return { text, weekStart: report.current?.weekStart };
 }
 
 export async function sendTelegram(text: string, context: InvocationContext, what = "Weekly summary"): Promise<void> {

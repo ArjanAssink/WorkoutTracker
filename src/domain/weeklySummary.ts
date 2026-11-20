@@ -1,5 +1,7 @@
 import { displayName } from "./activityType.js";
 import type { WeeklyReport, WeekReview } from "./goals.js";
+import { isRestWeekLabel, isLowerEffortWeek } from "./weekRecovery.js";
+import type { WeekAnnotation } from "./weekAnnotation.js";
 
 /**
  * The Monday-morning message: what last week was, how it compares to a typical week, and
@@ -17,15 +19,30 @@ const VERDICT = {
   short: { word: "SHORT", emoji: "⚠️" },
 } as const;
 
-export function composeWeeklySummary(report: WeeklyReport): string {
+export interface RestHistory {
+  weeks: WeekReview[];
+  annotations: Record<string, WeekAnnotation>;
+}
+
+/** Shared wording for a deliberate recovery week, without normal-goal pressure. */
+export function restWeekFocus(annotation: WeekAnnotation, reviewed = false): string[] {
+  return [
+    `Marked as <b>${escape(annotation.label)}</b>. ${reviewed ? "Recovery was the focus; normal session targets were not the aim for that week." : "Recovery is the focus; normal session targets are not the aim this week."} No catch-up sessions needed.`,
+    ...(annotation.note ? [`Your note: <i>${escape(annotation.note)}</i>`] : []),
+  ];
+}
+
+export function composeWeeklySummary(report: WeeklyReport, restHistory?: RestHistory): string {
   const week = report.current;
   if (!week) return "No completed week to report on yet.";
 
+  const annotation = restHistory?.annotations[week.weekStart];
+  const restWeek = isRestWeekLabel(annotation);
   const verdict = VERDICT[week.verdict];
-  const base = report.baseline;
+  const base = restWeek ? undefined : report.baseline;
   const lines: string[] = [];
 
-  lines.push(`${verdict.emoji} <b>Week of ${weekLabel(week)} — ${verdict.word}</b>`);
+  lines.push(restWeek ? `😴 <b>Week of ${weekLabel(week)} — REST / RECOVERY</b>` : `${verdict.emoji} <b>Week of ${weekLabel(week)} — ${verdict.word}</b>`);
   lines.push("");
 
   // Headline numbers, each against the typical week when there is one.
@@ -39,25 +56,30 @@ export function composeWeeklySummary(report: WeeklyReport): string {
   lines.push(effortLine(week));
   lines.push("");
 
-  // One line per target, aligned in a code block so the dots line up.
-  const width = Math.max(...week.targets.map((t) => t.label.length));
-  const rows = week.targets.map((t) => {
-    const dots = "●".repeat(Math.min(t.actual, t.sessions)) + "○".repeat(Math.max(0, t.sessions - t.actual));
-    const extra = t.actual > t.sessions ? ` +${t.actual - t.sessions}` : "";
-    const mark = t.met ? " ✓" : "";
-    return `${t.label.padEnd(width)}  ${dots.padEnd(3)} ${t.actual}/${t.sessions}${extra}${mark}`;
-  });
-  lines.push(`<code>${escape(rows.join("\n"))}</code>`);
+  if (restWeek && annotation) {
+    lines.push(...restWeekFocus(annotation, true));
+  } else {
+    // One line per target, aligned in a code block so the dots line up.
+    const width = Math.max(...week.targets.map((t) => t.label.length));
+    const rows = week.targets.map((t) => {
+      const dots = "●".repeat(Math.min(t.actual, t.sessions)) + "○".repeat(Math.max(0, t.sessions - t.actual));
+      const extra = t.actual > t.sessions ? ` +${t.actual - t.sessions}` : "";
+      const mark = t.met ? " ✓" : "";
+      return `${t.label.padEnd(width)}  ${dots.padEnd(3)} ${t.actual}/${t.sessions}${extra}${mark}`;
+    });
+    lines.push(`<code>${escape(rows.join("\n"))}</code>`);
 
-  const others = otherSessions(week);
-  if (others) lines.push(`<i>+ ${escape(others)}</i>`);
-  lines.push("");
+    const others = otherSessions(week);
+    if (others) lines.push(`<i>+ ${escape(others)}</i>`);
+    lines.push("");
 
-  lines.push(verdictLine(week, report));
+    lines.push(verdictLine(week, report));
+
+  }
 
   // The run of recent weeks, oldest first, so the trend is visible at a glance.
   const history = report.weeks.slice(-8);
-  if (history.length > 1) {
+  if (!restWeek && history.length > 1) {
     const glyphs = history.map((w) => (w.verdict === "perfect" ? "▲" : w.verdict === "verygood" ? "◆" : w.verdict === "good" ? "■" : "·")).join(" ");
     const good = history.filter((w) => w.verdict !== "short").length;
     const perfect = history.filter((w) => w.verdict === "perfect").length;
@@ -67,7 +89,29 @@ export function composeWeeklySummary(report: WeeklyReport): string {
     );
   }
 
+  if (restHistory) lines.push("", ...restContextLines(week, restHistory));
   return lines.join("\n");
+}
+
+/** Relative to the reviewed week, never the wall clock or an unfinished week. */
+export function restContextLines(current: WeekReview, history: RestHistory): string[] {
+  const weeks = history.weeks.filter((w) => w.weekStart <= current.weekStart).slice().sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  if (!weeks.length) return ["Rest context: no completed weeks available."];
+  const rest = weeks.find((w) => isRestWeekLabel(history.annotations[w.weekStart]));
+  const comparable = weeks.filter((w) => w.typicalEffort !== undefined && w.typicalEffort > 0);
+  const light = comparable.find(isLowerEffortWeek);
+  const when = (w: WeekReview) => {
+    const ago = Math.round((Date.parse(`${current.weekStart}T00:00:00Z`) - Date.parse(`${w.weekStart}T00:00:00Z`)) / (7 * 86400000));
+    return ago === 0 ? "the week just reviewed" : `${ago} week${ago === 1 ? "" : "s"} ago`;
+  };
+  return [
+    rest ? `🛌 Tagged rest: ${when(rest)} (week of ${weekLabel(rest)}; ${escape(history.annotations[rest.weekStart]!.label)}).`
+      : `🛌 No tagged rest week in the ${weeks.length} completed weeks checked.`,
+    light ? `Lower effort: ${when(light)} (week of ${weekLabel(light)}; ${Math.round(light.effort / light.typicalEffort! * 100)}% of typical).`
+      : comparable.length ? `No lower-effort week found among ${comparable.length} weeks with a baseline.` : "Lower effort: not enough history for a baseline.",
+    "<i>Lower effort = at least 40% below the preceding 12-week median of recorded effort.</i>",
+    "<i>Planning guide: consider a lighter/recovery week every 4–8 weeks of sustained hard training. This is a starting point, not a fixed rule; adjust to fatigue and recovery.</i>",
+  ];
 }
 
 /** "Effort 312 — 30% above your typical week (240)". The number alone means little. */

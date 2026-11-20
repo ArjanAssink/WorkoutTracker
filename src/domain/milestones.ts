@@ -1,7 +1,9 @@
 import { displayName } from "./activityType.js";
 import { MAX_HR_WINDOW_DAYS, trailingMaxHeartRate, type AthleteProfile } from "./effort.js";
 import type { GoalSpec, WeekReview } from "./goals.js";
-import { escape } from "./weeklySummary.js";
+import { escape, restWeekFocus } from "./weeklySummary.js";
+import { isRestWeekLabel } from "./weekRecovery.js";
+import type { WeekAnnotation } from "./weekAnnotation.js";
 import type { Workout } from "./workout.js";
 
 /**
@@ -151,7 +153,15 @@ export function detectMilestones(ctx: MilestoneContext): Milestone[] {
  * The mid-week check-in: where the week stands and what Sunday still needs. Nothing to say
  * once the week is already perfect — the milestone message has covered it.
  */
-export function composeCheckIn(week: WeekReview, spec: GoalSpec, now: Date, timeZone: string, typicalSessions?: number): string | undefined {
+export function composeCheckIn(week: WeekReview, spec: GoalSpec, now: Date, timeZone: string, typicalSessions?: number, annotation?: WeekAnnotation): string | undefined {
+  if (isRestWeekLabel(annotation) && annotation) {
+    const today = weekdayOf(now.toISOString(), timeZone) ?? "today";
+    return [
+      `😴 <b>${today} recovery check-in — week of ${weekLabel(week.weekStart)}</b>`,
+      ...restWeekFocus(annotation),
+      `${week.totalSessions} session${week.totalSessions === 1 ? "" : "s"} recorded so far · effort ${Math.round(week.effort)}.`,
+    ].join("\n");
+  }
   if (week.verdict === "perfect") return undefined;
   const today = weekdayOf(now.toISOString(), timeZone) ?? "today";
   const daysLeft = 7 - ((new Date(now).getUTCDay() + 6) % 7) - 1; // after today, through Sunday

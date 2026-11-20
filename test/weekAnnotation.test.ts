@@ -6,6 +6,8 @@ const store = vi.hoisted(() => ({ set: vi.fn(), delete: vi.fn(), datedRange: vi.
 vi.mock("../src/functions/shared.js", () => ({ getSettingsRepository: async () => store, getRepository: async () => store, getMilestoneRepository: async () => store }));
 vi.mock("../src/config/index.js", () => ({ config: () => ({ ingestApiKey: "test-key", goalSchedule: DEFAULT_GOALS }) }));
 import { saveWeekAnnotation } from "../src/functions/weekAnnotation.js";
+import { buildSummary } from "../src/functions/notifyWeekly.js";
+import { buildCheckIn, evaluateMilestones } from "../src/functions/notifyMilestones.js";
 import { getWeekly } from "../src/functions/getWeekly.js";
 const context = new InvocationContext();
 function request(body: unknown, key = "test-key") {
@@ -47,4 +49,39 @@ describe("week annotations", () => {
     expect(after.weeks.find((w) => w.weekStart === "2026-10-12")?.annotation).toEqual({ label: "Rest week", note: "Planned" });
     expect(after.weeks.map(({ annotation, recovery, ...week }) => week)).toEqual(before.weeks.map(({ recovery, ...week }) => week));
   });
+});
+
+
+it("loads a full year of rest labels while keeping the summary on the last complete week", async () => {
+  const summary = await buildSummary(new Date("2026-03-16T10:00:00Z"));
+  expect(summary.weekStart).toBe("2026-03-09");
+  expect(summary.text).toContain("52 completed weeks checked");
+  const [prefix, start, end] = store.datedRange.mock.calls[0]!;
+  expect(prefix).toBe("week.annotation.");
+  expect((Date.parse(end) - Date.parse(start)) / 86400000).toBe(53 * 7);
+});
+
+
+it("uses the current week's saved rest label in check-ins", async () => {
+  store.get.mockResolvedValue({ label: "Rest week", note: "Planned break" });
+  const result = await buildCheckIn(new Date("2026-03-12T17:00:00Z"));
+  expect(store.get).toHaveBeenCalledWith("week.annotation.2026-03-09");
+  expect(result.text).toContain("recovery check-in");
+  expect(result.text).not.toMatch(/more for a good week|For a perfect week/);
+});
+
+it("pauses milestone pushes on rest weeks without discarding sent history", async () => {
+  store.get.mockResolvedValue({ label: "Rest week", note: "" });
+  store.sentKeys.mockResolvedValue(new Set(["good"]));
+  const result = await evaluateMilestones([{ startedAt: "2026-03-12T10:00:00Z" } as never], new Date("2026-03-12T17:00:00Z"));
+  expect(result.due).toEqual([]); expect(result.toMark).toEqual([]); expect(result.alreadySent).toEqual(["good"]);
+  expect(store.listAll).not.toHaveBeenCalled();
+});
+
+it("adds current rest-week context to Monday's previous-week summary", async () => {
+  store.datedRange.mockResolvedValueOnce({ "2026-03-16": { label: "Rest week", note: "" } });
+  const summary = await buildSummary(new Date("2026-03-16T10:00:00Z"));
+  expect(summary.weekStart).toBe("2026-03-09");
+  expect(summary.text).toContain("This week: rest / recovery");
+  expect(summary.text).toContain("No catch-up sessions needed");
 });
