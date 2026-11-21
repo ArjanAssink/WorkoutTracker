@@ -445,7 +445,7 @@ tbody tr:last-child td { border-bottom: 0; }
       </div>
       <section class="recovery-panel" aria-labelledby="recovery-heading">
         <h3 id="recovery-heading">Recovery weeks</h3>
-        <p class="note">Blue bars = lower recorded effort (60% of typical or less). Circled R = tagged rest/recovery. Grey bars = other weeks. The week in progress is not assessed.</p>
+        <p class="note">Blue bars = lower recorded effort (60% of typical or less). Circled R = tagged rest/recovery. Grey bars = other weeks. An outlined bar shows this week’s load so far; recovery is assessed only after the week ends.</p>
         <div id="recovery-chart"></div>
         <p class="note" id="recovery-count"></p>
         <p class="note" id="effort-band-legend">Effort labels: 😴 recovery-level ≤60% · 🌿 lighter &gt;60% and &lt;90% · ⚖️ usual 90–110% · 🔥 above usual &gt;110%. Compared with the preceding 12-week median; independent of goals and manual tags.</p>
@@ -1320,9 +1320,9 @@ function weekContext(week) {
 function renderRecoveryWeeks(weeks) {
   const host = document.getElementById("recovery-chart");
   const width = Math.max(280, host.clientWidth || 800, weeks.length * 18 + 54), left = 42, right = 12, top = 24, plotH = 110, height = 164;
-  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "group", "aria-label": "Weekly effort as a percentage of typical. Blue bars are lower-effort weeks; circled R marks rest labels." });
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "group", "aria-label": "Weekly effort as a percentage of typical. Blue bars are lower-effort weeks; circled R marks rest labels; an outlined bar shows effort so far for an unfinished week." });
   svg.style.width = `${width}px`;
-  const values = weeks.filter((w) => w.recovery?.complete && w.recovery.effortPercent !== undefined).map((w) => w.recovery.effortPercent);
+  const values = weeks.filter((w) => Number.isFinite(w.recovery?.effortPercent)).map((w) => w.recovery.effortPercent);
   const ticks = niceTicks(Math.max(120, ...values), 3), max = ticks[ticks.length - 1];
   const y = (v) => top + plotH * (1 - v / max), step = (width - left - right) / weeks.length;
   for (const value of ticks) { svg.appendChild(svgEl("line", { class: "grid-line", x1: left, x2: width - right, y1: y(value), y2: y(value) })); svg.appendChild(svgText(left - 6, y(value) + 4, `${Math.round(value)}%`, { "text-anchor": "end" })); }
@@ -1331,11 +1331,16 @@ function renderRecoveryWeeks(weeks) {
     const r = week.recovery, x = left + step * (i + 0.5), barW = Math.max(2, step * 0.65);
     const hit = svgEl("rect", { class: "hit", x: left + i * step, y: 4, width: step, height: plotH + top }); svg.appendChild(hit);
     const marks = svgEl("g", { class: "mark" });
-    if (r?.complete && r.effortPercent !== undefined) marks.appendChild(svgEl("rect", { x: x - barW / 2, y: y(r.effortPercent), width: barW, height: Math.max(2, y(0) - y(r.effortPercent)), rx: 2, style: `fill:${r.lowerEffort ? "var(--series-1)" : "var(--text-muted)"};opacity:${r.lowerEffort ? 1 : 0.4}` }));
+    if (Number.isFinite(r?.effortPercent)) {
+      const barHeight = Math.max(2, y(0) - y(r.effortPercent));
+      marks.appendChild(svgEl("rect", { x: x - barW / 2, y: y(0) - barHeight, width: barW, height: barHeight, rx: 2,
+        "data-progress": String(!r.complete),
+        style: r.complete ? `fill:${r.lowerEffort ? "var(--series-1)" : "var(--text-muted)"};opacity:${r.lowerEffort ? 1 : 0.4}` : "fill:var(--text-muted);fill-opacity:0.18;stroke:var(--text-secondary);stroke-width:1.5;stroke-dasharray:3 2" }));
+    }
     else marks.appendChild(svgText(x, top + plotH / 2, r?.complete ? "—" : "…", { "text-anchor": "middle" }));
     if (r?.taggedRest) { marks.appendChild(svgEl("circle", { cx: x, cy: 12, r: 8, style: "fill:var(--surface-1);stroke:var(--series-1);stroke-width:1.5" })); marks.appendChild(svgText(x, 15, "R", { "text-anchor": "middle", style: "fill:var(--series-1);font-size:9px;font-weight:600" })); }
     svg.appendChild(marks);
-    attachTip(hit, `Week of ${fmtWeek(week.weekStart)}`, [["", recoveryDescription(week), null], ["recorded effort", `${Math.round(week.effort)}`, null], ...(r?.complete && r.effortPercent !== undefined ? [["of typical", `${Math.round(r.effortPercent)}%`, null], ["typical effort", `${Math.round(week.typicalEffort)}`, null]] : [])]);
+    attachTip(hit, `Week of ${fmtWeek(week.weekStart)}`, [["", recoveryDescription(week), null], ["recorded effort", `${Math.round(week.effort)}`, null], ...(Number.isFinite(r?.effortPercent) ? [[r.complete ? "of typical" : "of typical so far", `${Math.round(r.effortPercent)}%`, null], ["typical effort", `${Math.round(week.typicalEffort)}`, null]] : [])]);
     if (i % labelEvery === 0) svg.appendChild(svgText(x, top + plotH + 18, fmtWeek(week.weekStart), { "text-anchor": "middle" }));
   });
   svg.appendChild(svgEl("line", { x1: left, x2: width - right, y1: y(60), y2: y(60), style: "stroke:var(--series-1);stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none" }));
