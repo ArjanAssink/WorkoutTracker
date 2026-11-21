@@ -1,3 +1,4 @@
+import { weekPace } from "../src/domain/weekPace.js";
 /**
  * Serves the dashboard against synthetic data, with no Azure account and no Functions
  * host, so the page can be developed and reviewed in isolation.
@@ -172,7 +173,7 @@ createServer(async (request, response) => {
     const leadIn = new Date(from.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
     const inWindow = ALL.filter((w) => { const at = new Date(w.startedAt); return at >= leadIn && at < to; });
     const report = reviewWeeks(inWindow, DEFAULT_GOALS, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
-    return json(200, { ...report, weeks: report.weeks.map((week) => ({ ...week, recovery: weekRecovery(week, annotations.get(week.weekStart), new Date()), ...(annotations.has(week.weekStart) ? { annotation: annotations.get(week.weekStart) } : {}) })) });
+    return json(200, { ...report, weeks: report.weeks.map((week) => ({ ...week, recovery: weekRecovery(week, annotations.get(week.weekStart), new Date()), pace: weekPace(ALL, week, new Date(), annotations.get(week.weekStart)), ...(annotations.has(week.weekStart) ? { annotation: annotations.get(week.weekStart) } : {}) })) });
   }
   if (url.pathname === "/api/summary") {
     const granularity = (url.searchParams.get("granularity") ?? "week") as Granularity;

@@ -1,3 +1,4 @@
+import { weekPace } from "../domain/weekPace.js";
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
 import { config } from "../config/index.js";
 import { reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../domain/goals.js";
@@ -44,7 +45,7 @@ export async function getWeekly(request: HttpRequest, context: InvocationContext
     const workouts = await repository.listAll({ from: leadIn, to });
     const report = reviewWeeks(workouts, settings.goalSchedule, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
     const annotations = await (await getSettingsRepository()).datedRange<{ label: string; note: string }>("week.annotation.", from.toISOString().slice(0, 10), to.toISOString().slice(0, 10));
-    return ok({ ...report, weeks: report.weeks.map((week) => ({ ...week, recovery: weekRecovery(week, annotations[week.weekStart], now), ...(annotations[week.weekStart] ? { annotation: annotations[week.weekStart] } : {}) })) });
+    return ok({ ...report, weeks: report.weeks.map((week) => ({ ...week, recovery: weekRecovery(week, annotations[week.weekStart], now), pace: weekPace(workouts, week, now, annotations[week.weekStart]), ...(annotations[week.weekStart] ? { annotation: annotations[week.weekStart] } : {}) })) });
   } catch (error) {
     context.error("Failed to build weekly review", error);
     return serverError("Failed to build weekly review");
