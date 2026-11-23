@@ -48,12 +48,21 @@ fi
 
 # 3. Federated credential -----------------------------------------------------
 # The subject must match exactly what GitHub puts in the token. A job that declares
-# `environment: production` gets the environment subject, not the branch one.
-SUBJECT="repo:${REPO}:environment:${ENVIRONMENT}"
+# `environment: production` gets the environment subject, not the branch one. The prefix
+# is asked of GitHub rather than assumed: a repo with immutable subjects enabled sends
+# `repo:owner@<id>/name@<id>`, and the plain `repo:owner/name` then matches nothing.
+PREFIX=$(gh api "repos/${REPO}/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty' 2>/dev/null || true)
+SUBJECT="${PREFIX:-repo:${REPO}}:environment:${ENVIRONMENT}"
+CRED_NAME="github-${ENVIRONMENT}"
 if ! az ad app federated-credential list --id "$CLIENT_ID" --query "[?subject=='$SUBJECT']" -o tsv | grep -q .; then
+  # Names are unique per app: a credential left over with a stale subject must go first.
+  if az ad app federated-credential list --id "$CLIENT_ID" --query "[?name=='$CRED_NAME']" -o tsv | grep -q .; then
+    echo "Replacing federated credential '$CRED_NAME' (subject changed)..."
+    az ad app federated-credential delete --id "$CLIENT_ID" --federated-credential-id "$CRED_NAME"
+  fi
   echo "Creating federated credential for $SUBJECT..."
   az ad app federated-credential create --id "$CLIENT_ID" --parameters "{
-    \"name\": \"github-${ENVIRONMENT}\",
+    \"name\": \"${CRED_NAME}\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
     \"subject\": \"${SUBJECT}\",
     \"audiences\": [\"api://AzureADTokenExchange\"]

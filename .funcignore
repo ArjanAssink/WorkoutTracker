@@ -1,14 +1,16 @@
 *.md
 .git*
-.vscode
-.github
-infra
-test
-scripts
-src
-tsconfig.json
-vitest.config.ts
-local.settings.json
+# Anchored with a leading slash: a bare `src` matches at any depth, and the entry point
+# is dist/src/functions — unanchored, it shipped a package with no functions in it.
+/.vscode
+/.github
+/infra
+/test
+/scripts
+/src
+/tsconfig.json
+/vitest.config.ts
+/local.settings.json
 
 # The preview server is a dev tool; its compiled form has no business in production.
 dist/scripts
