@@ -453,7 +453,7 @@ tbody tr:last-child td { border-bottom: 0; }
       </div>
       <section class="recovery-panel" aria-labelledby="recovery-heading">
         <h3 id="recovery-heading">Recovery weeks</h3>
-        <p class="note">Blue bars = lower recorded effort (60% of typical or less). Circled R = tagged rest/recovery. Grey bars = other weeks. An outlined bar shows this week’s load so far; recovery is assessed only after the week ends.</p>
+        <p class="note">Blue bars = lower recorded effort (60% of typical or less). Circled R = tagged rest/recovery. Grey bars = other weeks. Dashed grey line = usual effort (100%, the median of the 12 weeks before each). An outlined bar shows this week’s load so far; recovery is assessed only after the week ends.</p>
         <div id="week-pace" hidden><div class="week-pace-grid" id="week-pace-values"></div><p class="note" id="week-pace-note"></p></div>
         <div id="recovery-chart"></div>
         <p class="note">For this week: solid tick = usual effort by this weekday/time; dotted extension = estimated finish if your usual remaining pattern repeats. The outline is recorded effort, not a forecast.</p>
@@ -1369,7 +1369,7 @@ function renderRecoveryWeeks(weeks) {
     document.getElementById("week-pace-note").textContent = `Effort points · as of ${asOf} (Amsterdam) · based on ${pace.historyWeeks} completed weeks. ${pace.projectionPaused ? "Rest week: projection paused; usual pace is context, not a target." : "Estimate = recorded effort + the median remaining effort at this point in past weeks. It is not a target or a promise."}`;
   }
   const width = Math.max(280, host.clientWidth || 800, weeks.length * 18 + 54), left = 42, right = 12, top = 24, plotH = 110, height = 164;
-  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "group", "aria-label": "Weekly effort as a percentage of typical. Blue bars are lower-effort weeks; circled R marks rest labels; an outlined bar shows effort so far for an unfinished week." });
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "group", "aria-label": "Weekly effort as a percentage of typical, with dashed lines at 100% (usual effort) and 60% (recovery threshold). Blue bars are lower-effort weeks; circled R marks rest labels; an outlined bar shows effort so far for an unfinished week." });
   svg.style.width = `${width}px`;
   const values = weeks.flatMap((w) => [w.recovery?.effortPercent, ...(w.pace && w.typicalEffort > 0 ? [w.pace.typicalSoFar / w.typicalEffort * 100, w.pace.projectedEffort === undefined ? undefined : w.pace.projectedEffort / w.typicalEffort * 100] : [])]).filter(Number.isFinite);
   const ticks = niceTicks(Math.max(120, ...values), 3), max = ticks[ticks.length - 1];
@@ -1403,7 +1403,10 @@ function renderRecoveryWeeks(weeks) {
     if (i % labelEvery === 0) svg.appendChild(svgText(x, top + plotH + 18, fmtWeek(week.weekStart), { "text-anchor": "middle" }));
   });
   svg.appendChild(svgEl("line", { x1: left, x2: width - right, y1: y(60), y2: y(60), style: "stroke:var(--series-1);stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none" }));
-  svg.appendChild(svgText(width - right, y(60) - 5, "60% recovery threshold", { "text-anchor": "end", style: "fill:var(--series-1);pointer-events:none" }));
+  svg.appendChild(svgText(width - right, y(60) - 5, "60% recovery threshold", { "text-anchor": "end", style: "fill:var(--series-1);pointer-events:none;paint-order:stroke;stroke:var(--surface-1);stroke-width:4px;stroke-linejoin:round" }));
+  // 100% = the typical week (median of the twelve before it) — the bar heights are relative to it.
+  svg.appendChild(svgEl("line", { "data-ref": "usual", x1: left, x2: width - right, y1: y(100), y2: y(100), style: "stroke:var(--text-secondary);stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none" }));
+  svg.appendChild(svgText(width - right, y(100) - 5, "100% usual effort", { "text-anchor": "end", style: "fill:var(--text-secondary);pointer-events:none;paint-order:stroke;stroke:var(--surface-1);stroke-width:4px;stroke-linejoin:round" }));
   host.replaceChildren(svg);
   const completed = weeks.filter((w) => w.recovery?.complete), matched = completed.filter((w) => w.recovery.taggedRest || w.recovery.lowerEffort);
   document.getElementById("recovery-count").textContent = `${matched.length} of ${completed.length} completed weeks match · ${completed.filter((w) => w.recovery.taggedRest).length} tagged rest/recovery · ${completed.filter((w) => w.recovery.lowerEffort).length} lower effort (a week can be both). Low recorded effort does not prove recovery if workouts were not logged.`;
