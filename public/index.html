@@ -240,6 +240,7 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .strip i[data-v="verygood"] { background: var(--cat-3); }
 .strip i[data-v="good"]    { background: var(--series-1); }
 .strip i[data-v="short"]   { background: var(--status-warn); }
+.strip i[data-v="high"] { background: var(--cat-3); } .strip i[data-v="ontrack"] { background: var(--series-1); } .strip i[data-v="low"] { background: var(--status-warn); } .strip i[data-v="paused"] { background: var(--grid); }
 .strip-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
 .strip-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
 .verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
@@ -248,6 +249,9 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 .verdict[data-v="verygood"]::before { background: var(--cat-3); }
 .verdict[data-v="good"]::before    { background: var(--series-1); }
 .verdict[data-v="short"]::before   { background: var(--status-warn); }
+/* The week in progress: an outlook, not a verdict — hollow dots, the same hue as the rung it is heading for. */
+.verdict[data-v="ontrack"]::before, .verdict[data-v="high"]::before, .verdict[data-v="low"]::before, .verdict[data-v="paused"]::before { background: none; box-shadow: inset 0 0 0 2px var(--outlook, var(--grid)); }
+.verdict[data-v="high"] { --outlook: var(--cat-3); } .verdict[data-v="ontrack"] { --outlook: var(--series-1); } .verdict[data-v="low"] { --outlook: var(--status-warn); }
 .dots { font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: 1px; }
 .dots b { color: var(--text-primary); font-weight: 400; }
 .dots s { color: var(--grid); text-decoration: none; }
@@ -258,7 +262,7 @@ svg .cat-label { fill: var(--text-secondary); font-size: 12px; }
 #goal-table table { min-width: 960px; }
 .goal-list { display: none; }
 .week-card { border: 1px solid var(--border); border-left: 4px solid var(--grid); border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
-.week-card[data-v="perfect"] { border-left-color: var(--status-good); } .week-card[data-v="verygood"] { border-left-color: var(--cat-3); } .week-card[data-v="good"] { border-left-color: var(--series-1); } .week-card[data-v="short"] { border-left-color: var(--status-warn); }
+.week-card[data-v="perfect"] { border-left-color: var(--status-good); } .week-card[data-v="verygood"] { border-left-color: var(--cat-3); } .week-card[data-v="good"] { border-left-color: var(--series-1); } .week-card[data-v="short"] { border-left-color: var(--status-warn); } .week-card[data-v="high"] { border-left-color: var(--cat-3); } .week-card[data-v="ontrack"] { border-left-color: var(--series-1); } .week-card[data-v="low"] { border-left-color: var(--status-warn); }
 .week-card.week-now { background: var(--hover-wash); }
 .week-card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .week-card .when { font-weight: 600; } .week-card .total { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -445,6 +449,7 @@ tbody tr:last-child td { border-bottom: 0; }
         <span><i style="background:var(--cat-3)"></i>Very good — 6+ sessions, 2+ strength</span>
         <span><i style="background:var(--series-1)"></i>Good — 5+ sessions</span>
         <span><i style="background:var(--status-warn)"></i>Short</span>
+        <span>This week (faded): on track · tracking high · tracking low</span>
       </div>
       <section class="recovery-panel" aria-labelledby="recovery-heading">
         <h3 id="recovery-heading">Recovery weeks</h3>
@@ -1206,7 +1211,21 @@ function renderWeightTable() {
  * Weekly goals — the verdict strip is progress over time; the table is the detail.
  * ------------------------------------------------------------------ */
 
-const VERDICT_LABEL = { perfect: "Perfect", verygood: "Very good", good: "Good", short: "Short" };
+const VERDICT_LABEL = { perfect: "Perfect", verygood: "Very good", good: "Good", short: "Short",
+  high: "Tracking high", ontrack: "On track", low: "Tracking low", paused: "Rest week", inprogress: "In progress" };
+
+/**
+ * A complete week shows its verdict; the week in progress shows where it is heading
+ * (`outlook`, from the API), since until Sunday nearly every week is still "short".
+ */
+function weekStatus(wk, inProgress) {
+  if (!inProgress) return wk.verdict;
+  return wk.outlook?.status ?? (wk.verdict === "short" ? "inprogress" : wk.verdict);
+}
+function outlookNote(wk) {
+  const p = wk.outlook?.projectedSessions;
+  return p === undefined ? "" : `heading for about ${Math.round(p)} sessions by Sunday (good week = ${wk.goodWeekSessions}+, very good = ${wk.veryGoodWeekSessions}+)`;
+}
 
 function renderGoals() {
   const report = state.weekly;
@@ -1243,14 +1262,22 @@ function renderGoals() {
   let streak = 0;
   for (let i = weeks.length - 2; i >= 0 && weeks[i].verdict !== "short"; i--) streak++;
   items.push(textSpan(`${streak}-week streak`, " of good or better"));
-  items.push(textSpan(`This week so far: ${inProgress.totalSessions}`, ` session${inProgress.totalSessions === 1 ? "" : "s"}`));
+  const nowStatus = weekStatus(inProgress, true);
+  const nowEl = document.createElement("span");
+  nowEl.className = "verdict"; nowEl.dataset.v = nowStatus;
+  nowEl.textContent = `This week: ${VERDICT_LABEL[nowStatus]}`;
+  if (outlookNote(inProgress)) nowEl.title = outlookNote(inProgress);
+  items.push(nowEl);
+  items.push(textSpan(`${inProgress.totalSessions} session${inProgress.totalSessions === 1 ? "" : "s"} so far`,
+    inProgress.outlook?.projectedSessions !== undefined ? ` (heading for ~${Math.round(inProgress.outlook.projectedSessions)})` : ""));
   head.replaceChildren(...items);
 
   strip.replaceChildren(...weeks.map((wk, i) => {
     const cell = document.createElement("i");
-    cell.dataset.v = wk.verdict;
+    const status = weekStatus(wk, i === weeks.length - 1);
+    cell.dataset.v = status;
     if (i === weeks.length - 1) cell.style.opacity = "0.45"; // in progress, not yet judged
-    cell.title = `${fmtWeek(wk.weekStart)} — ${VERDICT_LABEL[wk.verdict]}, ${wk.totalSessions} sessions${wk.annotation ? ` · ${wk.annotation.label}${wk.annotation.note ? ` — ${wk.annotation.note}` : ""}` : ""}`;
+    cell.title = `${fmtWeek(wk.weekStart)} — ${VERDICT_LABEL[status]}, ${wk.totalSessions} sessions${i === weeks.length - 1 && outlookNote(wk) ? ` so far, ${outlookNote(wk)}` : ""}${wk.annotation ? ` · ${wk.annotation.label}${wk.annotation.note ? ` — ${wk.annotation.note}` : ""}` : ""}`;
     cell.setAttribute("role", "img");
     cell.setAttribute("aria-label", cell.title);
     return cell;
@@ -1264,7 +1291,7 @@ function renderGoals() {
     { text: "Other", num: true }, { text: "Sessions", num: true }, { text: "Time", num: true }, { text: "Effort", num: true }];
   const rows = [...weeks].reverse().map((wk, i) => [
     fmtWeek(wk.weekStart) + (i === 0 ? " (so far)" : ""),
-    { el: verdictEl(wk.verdict) },
+    { el: verdictEl(weekStatus(wk, i === 0), i === 0 ? outlookNote(wk) : "") },
     { el: weekContext(wk) },
     ...targetTypes.map((a) => { const t = wk.targets.find((x) => x.activityType === a); return t ? { el: dotsEl(t.actual, t.sessions) } : { text: "—" }; }),
     { text: `${wk.otherSessions || ""}`, num: true },
@@ -1278,9 +1305,9 @@ function renderGoals() {
   // The phone view: one card per week, newest first.
   const shortLabel = (label) => (label.length > 10 ? label.split(/\s+/)[0] : label);
   document.getElementById("goal-list").replaceChildren(...[...weeks].reverse().map((wk, i) => {
-    const card = document.createElement("div"); card.className = `week-card${i === 0 ? " week-now" : ""}`; card.dataset.v = wk.verdict;
+    const card = document.createElement("div"); card.className = `week-card${i === 0 ? " week-now" : ""}`; card.dataset.v = weekStatus(wk, i === 0);
     const row = document.createElement("div"); row.className = "row";
-    const when = document.createElement("span"); when.className = "when"; when.append(verdictEl(wk.verdict), document.createTextNode(`  ${fmtWeek(wk.weekStart)}${i === 0 ? " · so far" : ""}`));
+    const when = document.createElement("span"); when.className = "when"; when.append(verdictEl(weekStatus(wk, i === 0), i === 0 ? outlookNote(wk) : ""), document.createTextNode(`  ${fmtWeek(wk.weekStart)}${i === 0 ? " · so far" : ""}`));
     const total = document.createElement("span"); total.className = "total"; total.textContent = `${wk.totalSessions} session${wk.totalSessions === 1 ? "" : "s"}`;
     row.append(when, total);
     const chips = document.createElement("div"); chips.className = "chips";
@@ -1442,10 +1469,11 @@ function pctLabel(ratio) {
   return pct > 0 ? `▲${pct}%` : `▼${-pct}%`;
 }
 
-function verdictEl(verdict) {
+function verdictEl(verdict, title = "") {
   const el = document.createElement("span");
   el.className = "verdict"; el.dataset.v = verdict;
   el.textContent = VERDICT_LABEL[verdict];
+  if (title) el.title = title;
   return el;
 }
 

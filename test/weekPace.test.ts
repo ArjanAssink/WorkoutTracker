@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { weekPace } from "../src/domain/weekPace.js";
+import { weekOutlook, weekPace } from "../src/domain/weekPace.js";
 import type { Workout } from "../src/domain/workout.js";
 import type { WeekReview } from "../src/domain/goals.js";
 const DAY=86400000;
@@ -43,5 +43,30 @@ describe("weekday pace and weekly projection",()=>{
   });
   it("is stable early Monday without dividing by a tiny progress fraction",()=>{
     expect(weekPace(history(),{...current,effort:0},new Date("2026-11-16T07:00:00Z"))).toMatchObject({typicalSoFar:0,projectedEffort:300});
+  });
+});
+
+describe("the current week's outlook",()=>{
+  const week=(totalSessions:number,verdict:WeekReview["verdict"]="short")=>({...current,totalSessions,verdict,goodWeekSessions:5,veryGoodWeekSessions:6} as WeekReview);
+  // history(): three sessions a week on Tue/Fri/Sun evenings; by Friday noon one is done, two to come.
+  it("counts the sessions the usual week still has to come, leaving out excluded activities",()=>{
+    expect(weekPace(history(),current,now)).toMatchObject({typicalSessionsSoFar:1,typicalSessionsRemaining:2});
+    expect(weekPace(history(),current,now,undefined,["strength"])).toMatchObject({typicalSessionsSoFar:0,typicalSessionsRemaining:0});
+  });
+  it("is on track, high or low by where the projection lands on the ladder",()=>{
+    const pace=weekPace(history(),current,now);
+    expect(weekOutlook(week(3),pace)).toEqual({status:"ontrack",projectedSessions:5});
+    expect(weekOutlook(week(4),pace)).toEqual({status:"high",projectedSessions:6});
+    expect(weekOutlook(week(2),pace)).toEqual({status:"low",projectedSessions:4});
+  });
+  it("never reads below what is already earned, and a perfect week is settled",()=>{
+    const pace={...weekPace(history(),current,now)!,typicalSessionsRemaining:0};
+    expect(weekOutlook(week(5,"good"),pace)?.status).toBe("ontrack");
+    expect(weekOutlook(week(6,"verygood"),pace)?.status).toBe("high");
+    expect(weekOutlook(week(4,"perfect"),pace)).toEqual({status:"perfect"});
+  });
+  it("pauses on a rest week and stays silent without a baseline",()=>{
+    expect(weekOutlook(week(1),weekPace(history(),current,now,{label:"Rest week",note:""}))).toEqual({status:"paused"});
+    expect(weekOutlook(week(1),undefined)).toBeUndefined();
   });
 });

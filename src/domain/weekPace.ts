@@ -18,6 +18,9 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b), mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
+interface Bucket { total: number; soFar: number; sessions: number; sessionsSoFar: number }
+const empty = (): Bucket => ({ total: 0, soFar: 0, sessions: 0, sessionsSoFar: 0 });
+
 export interface WeekPace {
   asOf: string;
   timeZone: "Europe/Amsterdam";
@@ -27,16 +30,28 @@ export interface WeekPace {
   typicalTotal: number;
   projectedEffort?: number;
   projectionPaused: boolean;
+  /** Median sessions finished by this local weekday and time in the comparison weeks. */
+  typicalSessionsSoFar: number;
+  /** Median sessions those weeks still had to come from this point to Sunday night. */
+  typicalSessionsRemaining: number;
 }
 
 /** Current-week context from up to 12 prior completed calendar weeks, with at least four available. */
-export function weekPace(workouts: readonly Workout[], week: WeekReview, now: Date, annotation?: WeekAnnotation): WeekPace | undefined {
+export function weekPace(
+  workouts: readonly Workout[],
+  week: WeekReview,
+  now: Date,
+  annotation?: WeekAnnotation,
+  /** Activities the week's spec leaves out of the session totals. */
+  excludeFromCount: readonly string[] = [],
+): WeekPace | undefined {
+  const excluded = new Set(excludeFromCount);
   const localNow = localTime(now.toISOString());
   if (!localNow) return undefined;
   const monday = startOfIsoWeek(new Date(`${localNow.date}T12:00:00Z`)).getTime();
   if (new Date(monday).toISOString().slice(0, 10) !== week.weekStart) return undefined;
   const cutoff = localNow.wall - monday;
-  const history = new Map<number, { total: number; soFar: number }>();
+  const history = new Map<number, Bucket>();
   let firstRecorded = Infinity;
   for (const workout of workouts) {
     const start = localTime(workout.startedAt), end = localTime(workout.endedAt);
@@ -44,15 +59,17 @@ export function weekPace(workouts: readonly Workout[], week: WeekReview, now: Da
     const key = startOfIsoWeek(new Date(`${start.date}T12:00:00Z`)).getTime();
     firstRecorded = Math.min(firstRecorded, key);
     if (key < monday - 12 * WEEK || key >= monday) continue;
-    const bucket = history.get(key) ?? { total: 0, soFar: 0 };
+    const bucket = history.get(key) ?? empty();
+    const counts = !excluded.has(workout.activityType);
     bucket.total += workout.effort;
+    if (counts) bucket.sessions++;
     // Only count sessions that would have finished by this local weekday and time.
-    if (end.wall - key <= cutoff) bucket.soFar += workout.effort;
+    if (end.wall - key <= cutoff) { bucket.soFar += workout.effort; if (counts) bucket.sessionsSoFar++; }
     history.set(key, bucket);
   }
-  const weeks: Array<{ total: number; soFar: number }> = [];
+  const weeks: Bucket[] = [];
   for (let key = monday - 12 * WEEK; key < monday; key += WEEK) {
-    if (key >= firstRecorded) weeks.push(history.get(key) ?? { total: 0, soFar: 0 });
+    if (key >= firstRecorded) weeks.push(history.get(key) ?? empty());
   }
   if (weeks.length < 4) return undefined;
   const typicalTotal = median(weeks.map((w) => w.total));
@@ -63,6 +80,36 @@ export function weekPace(workouts: readonly Workout[], week: WeekReview, now: Da
   return {
     asOf: now.toISOString(), timeZone: "Europe/Amsterdam", historyWeeks: weeks.length,
     typicalSoFar, typicalRemaining, typicalTotal, projectionPaused,
+    typicalSessionsSoFar: median(weeks.map((w) => w.sessionsSoFar)),
+    typicalSessionsRemaining: median(weeks.map((w) => w.sessions - w.sessionsSoFar)),
     ...(!projectionPaused ? { projectedEffort: week.effort + typicalRemaining } : {}),
   };
+}
+
+/**
+ * The week in progress has no verdict yet — on a Wednesday every week is "short". The
+ * outlook says where it is heading instead: sessions so far plus the sessions usually still
+ * to come by Sunday, placed on the same ladder. It never reads below what is already
+ * earned, and a perfect week is settled. Session counts only: the very-good minimums and
+ * the per-activity targets are left to the verdict once the week is over.
+ */
+export type WeekOutlookStatus = "perfect" | "high" | "ontrack" | "low" | "paused";
+
+export interface WeekOutlook {
+  status: WeekOutlookStatus;
+  /** Sessions so far plus the typical remainder; absent when the projection is paused. */
+  projectedSessions?: number;
+}
+
+export function weekOutlook(week: WeekReview, pace: WeekPace | undefined): WeekOutlook | undefined {
+  if (!pace) return undefined;
+  if (week.verdict === "perfect") return { status: "perfect" };
+  if (pace.projectionPaused) return { status: "paused" };
+  const projectedSessions = week.totalSessions + pace.typicalSessionsRemaining;
+  const status: WeekOutlookStatus = week.verdict === "verygood" || projectedSessions >= week.veryGoodWeekSessions
+    ? "high"
+    : week.verdict === "good" || projectedSessions >= week.goodWeekSessions
+      ? "ontrack"
+      : "low";
+  return { status, projectedSessions };
 }
