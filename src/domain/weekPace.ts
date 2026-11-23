@@ -91,9 +91,11 @@ export function weekPace(
  * outlook says where it is heading instead: sessions so far plus the sessions usually still
  * to come by Sunday, placed on the same ladder. It never reads below what is already
  * earned, and a perfect week is settled. Session counts only: the very-good minimums and
- * the per-activity targets are left to the verdict once the week is over.
+ * the per-activity targets are left to the verdict once the week is over. Until the first
+ * session of the week is logged the projection is only the typical week restated, so it
+ * says "no data" rather than a direction.
  */
-export type WeekOutlookStatus = "perfect" | "high" | "ontrack" | "low" | "paused";
+export type WeekOutlookStatus = "perfect" | "high" | "ontrack" | "low" | "paused" | "nodata";
 
 export interface WeekOutlook {
   status: WeekOutlookStatus;
@@ -105,6 +107,7 @@ export function weekOutlook(week: WeekReview, pace: WeekPace | undefined): WeekO
   if (!pace) return undefined;
   if (week.verdict === "perfect") return { status: "perfect" };
   if (pace.projectionPaused) return { status: "paused" };
+  if (week.totalSessions === 0) return { status: "nodata" };
   const projectedSessions = week.totalSessions + pace.typicalSessionsRemaining;
   const status: WeekOutlookStatus = week.verdict === "verygood" || projectedSessions >= week.veryGoodWeekSessions
     ? "high"

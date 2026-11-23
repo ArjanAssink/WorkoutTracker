@@ -65,6 +65,9 @@ describe("the current week's outlook",()=>{
     expect(weekOutlook(week(6,"verygood"),pace)?.status).toBe("high");
     expect(weekOutlook(week(4,"perfect"),pace)).toEqual({status:"perfect"});
   });
+  it("says there is no data yet before the first session of the week",()=>{
+    expect(weekOutlook(week(0),weekPace(history(),current,now))).toEqual({status:"nodata"});
+  });
   it("pauses on a rest week and stays silent without a baseline",()=>{
     expect(weekOutlook(week(1),weekPace(history(),current,now,{label:"Rest week",note:""}))).toEqual({status:"paused"});
     expect(weekOutlook(week(1),undefined)).toBeUndefined();
