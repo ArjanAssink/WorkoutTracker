@@ -140,7 +140,14 @@ against every other, and relabelling a slug changes identity.
    (the old history is on the local, never-pushed branch `private-history`), deployment
    names moved to `.env`, the person's numbers taken out of the docs. Keep it that way:
    no domain, resource names, heart rates, bodyweights or lift numbers in commits or docs.
-4. CI via OIDC (needs the user to run `scripts/setup-github-oidc.sh`).
+4. **CI via OIDC is done** (2026-11-23): app registration `workout-tracker-github-deploy`,
+   Contributor on the resource group only, four repo secrets + `DEPLOY_ENABLED`; push and
+   `workflow_dispatch` deploys both verified live. Two traps it hit: the repo uses
+   **immutable OIDC subjects** (`repo:owner@<id>/name@<id>:…`), so the setup script reads
+   the prefix from GitHub; and the action honours `.funcignore` with gitignore semantics,
+   so its entries are **anchored** — a bare `src` also stripped `dist/src` and shipped an
+   app with zero functions (every route 404, run still green). After a deploy, check
+   `az functionapp function list` is non-empty, not just the run's conclusion.
 5. **Strava** comes from the free data archive (`npm run strava -- export_*.zip`;
    `src/ingest/stravaArchive.ts`, `scripts/import-strava.ts`), not the API — Strava only
    lets subscribers create API applications and the user is on the free tier. The API
