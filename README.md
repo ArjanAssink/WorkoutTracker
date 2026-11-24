@@ -25,7 +25,7 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | ------ | --------------- | ------- |
 | `POST` | `/api/workouts` | Record one workout. |
 | `POST` | `/api/ingest/health-auto-export` | Batch ingest from the Health Auto Export app. |
-| `GET`  | `/api/workouts` | The raw record feed for a date range. |
+| `GET`  | `/api/workouts` | The raw record feed for a date range; each row carries its display `label` and, when zoned, `heartRateZones` with the bpm floors (`heartRateZoneBpm`) they were cut at. |
 | `GET`  | `/api/summary`  | Per-period totals, per-activity breakdown, active days, longest streak. |
 | `GET`  | `/`              | Redirects to the dashboard, query string included. |
 | `GET`  | `/api/dashboard` | The web dashboard. Unauthenticated shell; it asks for the key in the browser. |
@@ -35,6 +35,7 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`/`POST` | `/api/notify/milestones` | What the week in progress has earned and what was already announced; `POST` sends what is due. |
 | `GET`/`POST` | `/api/notify/checkin` | Preview the Thursday check-in, or send it now. |
 | `GET`  | `/api/notify/stale` | When the phone last pushed data, and whether the three-day silence alert would fire. |
+| `GET`  | `/api/history`   | Every workout, filterable and sortable, each opening to its detail: pace, heart rate, zones, effort against that activity's previous ten. `#<id>` opens one; the dashboard's recent list links there. |
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
 | `GET`  | `/api/recovery`  | The Recovery page: sleep, resting HR and HRV against training load. |
 | `GET`  | `/api/map`       | The Routes page: every GPS track, home as the hero and each place away as a card. |

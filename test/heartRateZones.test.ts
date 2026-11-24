@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildHistogram, decodeHistogram, encodeHistogram, workoutZones, zoneBounds, zoneOf, zoneSeconds,
+  buildHistogram, decodeHistogram, encodeHistogram, presentWorkout, workoutZones, zoneBounds, zoneOf, zoneSeconds,
   MAX_SAMPLE_GAP_SECONDS,
 } from "../src/domain/heartRateZones.js";
 
@@ -85,5 +85,17 @@ describe("zoneSeconds / workoutZones", () => {
 
   it("is undefined for a workout with no sample stream", () => {
     expect(workoutZones({ maxHeartRateReference: 180 }, 50, 190)).toBeUndefined();
+  });
+});
+
+describe("presentWorkout", () => {
+  it("swaps the histogram for zone seconds and the bpm floors of that workout's own reference", () => {
+    const out = presentWorkout({ id: "a", heartRateHistogram: "160:600", maxHeartRateReference: 170 }, 50, 190);
+    expect(out).toEqual({ id: "a", maxHeartRateReference: 170, heartRateZones: [0, 0, 0, 0, 600], heartRateZoneBpm: [50, 122, 134, 146, 158] });
+    expect("heartRateHistogram" in out).toBe(false);
+  });
+
+  it("adds nothing for a workout without a histogram", () => {
+    expect(presentWorkout({ id: "b", maxHeartRateReference: 170 }, 50, 190)).toEqual({ id: "b", maxHeartRateReference: 170 });
   });
 });

@@ -115,15 +115,18 @@ export function workoutZones(
   return zoneSeconds(h, restingHeartRate, workout.maxHeartRateReference ?? fallbackMaxHeartRate);
 }
 
-/** A workout as the API returns it: the histogram swapped for seconds per zone. */
+/** A workout as the API returns it: the histogram swapped for seconds per zone and the bpm floors they were cut at. */
 export function presentWorkout<W extends { heartRateHistogram?: string | undefined; maxHeartRateReference?: number | undefined }>(
   workout: W,
   restingHeartRate: number,
   fallbackMaxHeartRate: number,
-): Omit<W, "heartRateHistogram"> & { heartRateZones?: number[] } {
+): Omit<W, "heartRateHistogram"> & { heartRateZones?: number[]; heartRateZoneBpm?: number[] } {
   const { heartRateHistogram: _histogram, ...rest } = workout;
   const zones = workoutZones(workout, restingHeartRate, fallbackMaxHeartRate);
-  return zones ? { ...rest, heartRateZones: zones } : rest;
+  if (!zones) return rest;
+  // The bpm each zone started at for this workout — its own reference, not today's.
+  const bpm = zoneBounds(restingHeartRate, workout.maxHeartRateReference ?? fallbackMaxHeartRate);
+  return { ...rest, heartRateZones: zones, heartRateZoneBpm: bpm };
 }
 
 /** What the dashboard needs to label the zones: the reserve floors and, at one max, their bpm. */

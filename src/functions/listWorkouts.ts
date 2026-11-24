@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
 import { config } from "../config/index.js";
-import { normaliseActivityType } from "../domain/activityType.js";
+import { displayName, normaliseActivityType } from "../domain/activityType.js";
 import { presentWorkout } from "../domain/heartRateZones.js";
 import { RangeError_, resolveRange } from "../http/dateRange.js";
 import { isAuthorised } from "../http/auth.js";
@@ -54,7 +54,8 @@ export async function listWorkouts(request: HttpRequest, context: InvocationCont
       truncated: workouts.length >= Math.min(limit, MAX_LIMIT),
       // The histogram is storage; callers get seconds per zone, resolved against the max
       // each workout was scored with.
-      workouts: workouts.map((w) => presentWorkout(w, settings.profile.restingHeartRate, settings.profile.maxHeartRate)),
+      // The label rides along so pages never title-case a slug ("hiit" → "Hiit") themselves.
+      workouts: workouts.map((w) => ({ ...presentWorkout(w, settings.profile.restingHeartRate, settings.profile.maxHeartRate), label: displayName(w.activityType) })),
     });
   } catch (error) {
     context.error("Failed to list workouts", error);

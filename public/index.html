@@ -308,6 +308,8 @@ th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
 tbody tr:last-child td { border-bottom: 0; }
 .link { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--series-1); cursor: pointer; text-decoration: underline; }
+.row-link { color: inherit; text-decoration: none; } .row-link:hover { color: var(--series-1); text-decoration: underline; }
+.row-link:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; border-radius: 3px; }
 .empty { color: var(--text-muted); padding: 28px 0; text-align: center; font-size: 13px; }
 
 /* ---- Key gate ---- */
@@ -387,6 +389,7 @@ tbody tr:last-child td { border-bottom: 0; }
       <h1>Workout Tracker</h1>
       <span class="subtitle" id="range-label"></span>
       <span class="spacer"></span>
+      <a class="icon-btn" href="/api/history" style="text-decoration:none">Workouts →</a>
       <a class="icon-btn" href="/api/strength" style="text-decoration:none">Strength →</a>
       <a class="icon-btn" href="/api/recovery" style="text-decoration:none">Recovery →</a>
       <a class="icon-btn" href="/api/map" style="text-decoration:none">Routes →</a>
@@ -508,7 +511,7 @@ tbody tr:last-child td { border-bottom: 0; }
         <div class="plot" id="activities"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>Recent workouts</h2></div>
+        <div class="card-head"><h2>Recent workouts</h2><span class="spacer"></span><a class="link" href="/api/history">All workouts →</a></div>
         <div class="plot" id="recent"></div>
       </div>
     </div>
@@ -1730,7 +1733,8 @@ function renderRecent() {
     ["Date", "Activity", { text: "Time", num: true }, { text: "Effort", num: true }, { text: "Zones", num: true }],
     recent.map((w) => [
       new Date(w.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-      activityLabel(w.activityType),
+      // Each row opens that workout's detail on the all-workouts page.
+      { el: workoutLink(w) },
       { text: formatDuration(w.durationSeconds), num: true },
       // An effort scored without heart rate is an estimate; mark it rather than implying precision.
       { text: `${Math.round(w.effort)}${w.effortModel === "met-minutes" ? "*" : ""}`, num: true },
@@ -1745,6 +1749,14 @@ function renderRecent() {
     note.textContent = "* estimated from duration and activity — no heart rate recorded";
     host.appendChild(note);
   }
+}
+
+function workoutLink(w) {
+  const a = document.createElement("a");
+  a.href = `/api/history#${encodeURIComponent(w.id)}`;
+  a.className = "row-link";
+  a.textContent = activityLabel(w.activityType);
+  return a;
 }
 
 /** Proportional bar of a workout's time in zone; the values ride along as its label. */

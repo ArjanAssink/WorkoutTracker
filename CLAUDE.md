@@ -92,7 +92,8 @@ src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|Y
                 liftRepository (PK me|pr, me|repmax, me|tm|<program>, me|set),
                 milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
-public/         index.html (dashboard), strength.html, recovery.html, map.html — standalone, no build
+public/         index.html (dashboard), workouts.html (/api/history), strength.html, recovery.html,
+                map.html — standalone, no build
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
 ```
 

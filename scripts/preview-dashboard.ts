@@ -10,7 +10,7 @@ import { weekOutlook, weekPace } from "../src/domain/weekPace.js";
  */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { normaliseActivityType } from "../src/domain/activityType.js";
+import { displayName, normaliseActivityType } from "../src/domain/activityType.js";
 import { DEFAULT_PROFILE, trailingMaxHeartRate } from "../src/domain/effort.js";
 import { scoreWithReference } from "../src/domain/scoring.js";
 import { summarise, type Granularity } from "../src/domain/summary.js";
@@ -145,6 +145,9 @@ createServer(async (request, response) => {
   if (url.pathname === "/" || url.pathname === "/api/dashboard") {
     return send(200, await readFile(PAGE, "utf8"), "text/html; charset=utf-8");
   }
+  if (url.pathname === "/api/history") {
+    return send(200, await readFile(new URL("../../public/workouts.html", import.meta.url), "utf8"), "text/html; charset=utf-8");
+  }
 
   if (request.headers["x-api-key"] !== KEY) return json(401, { error: "Invalid or missing API key" });
 
@@ -199,7 +202,7 @@ createServer(async (request, response) => {
       to: range.to.toISOString(),
       count: inRange.length,
       truncated: false,
-      workouts: inRange.map((w) => presentWorkout(w, DEFAULT_PROFILE.restingHeartRate, DEFAULT_PROFILE.maxHeartRate)),
+      workouts: inRange.map((w) => ({ ...presentWorkout(w, DEFAULT_PROFILE.restingHeartRate, DEFAULT_PROFILE.maxHeartRate), label: displayName(w.activityType) })),
     });
   }
   return json(404, { error: "Not found" });
