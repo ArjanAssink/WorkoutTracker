@@ -306,3 +306,25 @@ describe("peak heart rate", () => {
     expect(summarise([workout("2026-03-05T07:00:00Z")], "month", from, to).peakHeartRate).toBeNull();
   });
 });
+
+describe("summarise — time in zone", () => {
+  const profile = { restingHeartRate: 50, maxHeartRate: 190 };
+
+  it("adds each workout's zones into its period and the totals", () => {
+    const summary = summarise([
+      workout("2026-03-10T07:00:00Z", { heartRateHistogram: "140:600", maxHeartRateReference: 190 }), // Z2
+      workout("2026-03-12T07:00:00Z", { heartRateHistogram: "180:300" }),                            // Z5 (fallback)
+      workout("2026-03-17T07:00:00Z"),                                                              // no stream
+    ], "week", new Date("2026-03-09T00:00:00Z"), new Date("2026-03-23T00:00:00Z"), profile);
+    expect(summary.buckets.map((b) => b.heartRateZones)).toEqual([[0, 600, 0, 0, 300], [0, 0, 0, 0, 0]]);
+    expect(summary.buckets.map((b) => b.zonedWorkouts)).toEqual([2, 0]);
+    expect(summary.totals.heartRateZones).toEqual([0, 600, 0, 0, 300]);
+    expect(summary.totals.zonedWorkouts).toBe(2);
+  });
+
+  it("reports zero zones, densely, without a profile", () => {
+    const summary = summarise([workout("2026-03-10T07:00:00Z", { heartRateHistogram: "140:600" })], "week",
+      new Date("2026-03-09T00:00:00Z"), new Date("2026-03-16T00:00:00Z"));
+    expect(summary.buckets[0]!.heartRateZones).toEqual([0, 0, 0, 0, 0]);
+  });
+});

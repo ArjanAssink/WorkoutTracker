@@ -14,6 +14,7 @@ import { normaliseActivityType } from "../src/domain/activityType.js";
 import { DEFAULT_PROFILE, trailingMaxHeartRate } from "../src/domain/effort.js";
 import { scoreWithReference } from "../src/domain/scoring.js";
 import { summarise, type Granularity } from "../src/domain/summary.js";
+import { buildHistogram, encodeHistogram, presentWorkout, zoneModel } from "../src/domain/heartRateZones.js";
 import { buildWorkout, type Workout, type WorkoutInput } from "../src/domain/workout.js";
 import { resolveRange } from "../src/http/dateRange.js";
 import { DEFAULT_GOALS, reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../src/domain/goals.js";
@@ -83,7 +84,14 @@ function generate(): Workout[] {
         ...(choice.hr
           ? (() => {
               const avg = Math.round(choice.hr[0] + random() * (choice.hr[1] - choice.hr[0]));
-              return { averageHeartRate: avg, minHeartRate: avg - Math.round(25 + random() * 20), maxHeartRate: avg + Math.round(15 + random() * 25) };
+              // A sample every 5 s: a warm-up ramp, then the working average with intervals on top.
+              const t0 = startedAt.getTime(), n = Math.floor((minutes * 60) / 5);
+              const stream = Array.from({ length: n }, (_, i) => ({
+                at: t0 + i * 5000,
+                bpm: Math.min(i / 60, 1) * avg + (1 - Math.min(i / 60, 1)) * 95 + 14 * Math.sin(i / 40) + (random() - 0.5) * 8,
+              }));
+              const histogram = buildHistogram(stream, t0, t0 + minutes * 60_000);
+              return { ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}), averageHeartRate: avg, minHeartRate: avg - Math.round(25 + random() * 20), maxHeartRate: avg + Math.round(15 + random() * 25) };
             })()
           : {}),
         ...(choice.km ? { distanceMeters: Math.round((choice.km[0] + random() * (choice.km[1] - choice.km[0])) * 1000) } : {}),
@@ -179,9 +187,10 @@ createServer(async (request, response) => {
     const granularity = (url.searchParams.get("granularity") ?? "week") as Granularity;
     const observed = trailingMaxHeartRate(ALL, range.to);
     return json(200, {
-      ...summarise(inRange, granularity, range.from, range.to),
+      ...summarise(inRange, granularity, range.from, range.to, DEFAULT_PROFILE),
       profile: { restingHeartRate: 60, maxHeartRate: 185 },
       referenceMaxHeartRate: { bpm: observed ?? 185, observed: observed !== undefined },
+      heartRateZoneModel: zoneModel(DEFAULT_PROFILE.restingHeartRate, observed ?? DEFAULT_PROFILE.maxHeartRate),
     });
   }
   if (url.pathname === "/api/workouts") {
@@ -190,7 +199,7 @@ createServer(async (request, response) => {
       to: range.to.toISOString(),
       count: inRange.length,
       truncated: false,
-      workouts: inRange,
+      workouts: inRange.map((w) => presentWorkout(w, DEFAULT_PROFILE.restingHeartRate, DEFAULT_PROFILE.maxHeartRate)),
     });
   }
   return json(404, { error: "Not found" });

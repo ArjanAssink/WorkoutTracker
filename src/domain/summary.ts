@@ -1,5 +1,12 @@
 import { displayName } from "./activityType.js";
 import type { Workout } from "./workout.js";
+import { workoutZones, ZONE_COUNT } from "./heartRateZones.js";
+
+/** Seconds per heart-rate zone, and how many workouts carried a sample stream to measure it. */
+export interface ZoneTotals {
+  heartRateZones: number[];
+  zonedWorkouts: number;
+}
 
 /** How to bucket a span of workouts for a retrospective view. */
 export type Granularity = "day" | "week" | "month" | "year";
@@ -12,7 +19,7 @@ export interface Totals {
   effort: number;
 }
 
-export interface Bucket extends Totals {
+export interface Bucket extends Totals, ZoneTotals {
   /** Bucket start, as `YYYY-MM-DD` for day/week, `YYYY-MM` for month, `YYYY` for year. */
   period: string;
   /** Distinct calendar days with at least one workout — "how often", not "how much". */
@@ -46,7 +53,7 @@ export interface Summary {
   granularity: Granularity;
   /** Null when no workout in the range recorded a maximum. */
   peakHeartRate: PeakHeartRate | null;
-  totals: Totals & { activeDays: number };
+  totals: Totals & ZoneTotals & { activeDays: number };
   buckets: Bucket[];
   byActivity: ActivityBreakdown[];
   /** Longest run of consecutive calendar days with a workout, within the range. */
@@ -118,11 +125,21 @@ function advance(cursor: Date, granularity: Granularity): void {
  * 4,000 rows — this is far cheaper than pushing aggregation into storage, and it keeps the
  * analysis logic testable without an Azure account.
  */
-export function summarise(workouts: Workout[], granularity: Granularity, from: Date, to: Date): Summary {
+export function summarise(
+  workouts: Workout[],
+  granularity: Granularity,
+  from: Date,
+  to: Date,
+  /** Resting HR and the fallback max, for time in zone. Without it every zone total is zero. */
+  zoneProfile?: { restingHeartRate: number; maxHeartRate: number },
+): Summary {
   const buckets = new Map<string, Bucket & { days: Set<string> }>();
+  const emptyBucket = (period: string): Bucket & { days: Set<string> } =>
+    ({ period, ...EMPTY, ...emptyZones(), activeDays: 0, byActivity: {}, days: new Set() });
   for (const period of enumeratePeriods(from, to, granularity)) {
-    buckets.set(period, { period, ...EMPTY, activeDays: 0, byActivity: {}, days: new Set() });
+    buckets.set(period, emptyBucket(period));
   }
+  const zoneTotals = emptyZones();
   const activities = new Map<string, ActivityBreakdown>();
   const allDays = new Set<string>();
   const totals: Totals = { ...EMPTY };
@@ -147,11 +164,19 @@ export function summarise(workouts: Workout[], granularity: Granularity, from: D
     if (!bucket) {
       // Defensive: a workout just outside the enumerated range still gets counted
       // rather than silently vanishing from the totals it contributed to.
-      bucket = { period, ...EMPTY, activeDays: 0, byActivity: {}, days: new Set() };
+      bucket = emptyBucket(period);
       buckets.set(period, bucket);
     }
     bucket.days.add(day);
     accumulate(bucket, workout);
+
+    const zones = zoneProfile && workoutZones(workout, zoneProfile.restingHeartRate, zoneProfile.maxHeartRate);
+    if (zones) {
+      for (const target of [bucket, zoneTotals]) {
+        target.zonedWorkouts += 1;
+        zones.forEach((s, z) => { target.heartRateZones[z]! += s; });
+      }
+    }
 
     const within = (bucket.byActivity[workout.activityType] ??= { ...EMPTY });
     accumulate(within, workout);
@@ -175,11 +200,13 @@ export function summarise(workouts: Workout[], granularity: Granularity, from: D
     to: to.toISOString(),
     granularity,
     peakHeartRate: peak,
-    totals: { ...round(totals), activeDays: allDays.size },
+    totals: { ...round(totals), ...zoneTotals, activeDays: allDays.size },
     buckets: orderedBuckets.map((b) => ({
       ...round(b),
       period: b.period,
       activeDays: b.activeDays,
+      heartRateZones: b.heartRateZones,
+      zonedWorkouts: b.zonedWorkouts,
       byActivity: Object.fromEntries(Object.entries(b.byActivity).map(([k, v]) => [k, round(v)])),
     })),
     // Most-trained activity first — the question is almost always "what do I actually do?".
@@ -188,6 +215,10 @@ export function summarise(workouts: Workout[], granularity: Granularity, from: D
       .map((a) => ({ ...round(a), activityType: a.activityType, label: a.label })),
     longestStreakDays: longestStreak(allDays),
   };
+}
+
+function emptyZones(): ZoneTotals {
+  return { heartRateZones: new Array<number>(ZONE_COUNT).fill(0), zonedWorkouts: 0 };
 }
 
 function accumulate(target: Totals, workout: Workout): void {

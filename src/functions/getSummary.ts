@@ -3,6 +3,7 @@ import { config } from "../config/index.js";
 import { normaliseActivityType } from "../domain/activityType.js";
 import { MAX_HR_WINDOW_DAYS, trailingMaxHeartRate, withObservedMax } from "../domain/effort.js";
 import { summarise, type Granularity } from "../domain/summary.js";
+import { zoneModel } from "../domain/heartRateZones.js";
 import { RangeError_, resolveRange } from "../http/dateRange.js";
 import { isAuthorised } from "../http/auth.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
@@ -49,9 +50,12 @@ export async function getSummary(request: HttpRequest, context: InvocationContex
     const observed = trailingMaxHeartRate(history, range.to);
     const effective = withObservedMax(settings.profile, observed);
     return ok({
-      ...summarise(workouts, granularityParam, range.from, range.to),
+      ...summarise(workouts, granularityParam, range.from, range.to, settings.profile),
       profile: { restingHeartRate: settings.profile.restingHeartRate, maxHeartRate: settings.profile.maxHeartRate },
       referenceMaxHeartRate: { bpm: effective.maxHeartRate, observed: effective.maxHeartRate !== settings.profile.maxHeartRate || observed === effective.maxHeartRate },
+      // Zones are % of heart-rate reserve; each workout is zoned against the max it was
+      // scored with, so these bpm bounds (at today's reference) are for labelling only.
+      heartRateZoneModel: zoneModel(settings.profile.restingHeartRate, effective.maxHeartRate),
     });
   } catch (error) {
     context.error("Failed to build summary", error);

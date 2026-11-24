@@ -926,6 +926,29 @@ minimum and maximum from the samples inside its span. A workout's own statistics
 win; a handful of stray readings across an hour is a watch glance, not a recording, and
 is ignored (fewer than ten samples, or under one every two minutes).
 
+### Time in heart-rate zones
+
+The same sample stream gives every workout a **per-bpm histogram** — seconds spent at each
+whole bpm — stored on the row as `heartRateHistogram` (`"<first bpm>:<s>,<s>,…"`). Each
+sample counts for the time until the next, capped at two minutes so a dropout is not
+smeared over; the same glance rule as above applies. Apple's own workouts get one too:
+their summary statistics are on the workout, but the samples are still loose records.
+
+Zones are resolved **at read time**, never stored: five Karvonen zones on heart-rate reserve
+(below 60%, 60–70, 70–80, 80–90, 90%+), the reserve TRIMP uses — resting from
+`ATHLETE_RESTING_HR`, max from the reference each workout was scored with. A rescore or a
+change to the zone floors (`ZONE_FLOORS` in `domain/heartRateZones.ts`) therefore needs no
+re-import. `/api/workouts` returns `heartRateZones` (seconds, Z1–Z5) per workout;
+`/api/summary` returns `heartRateZones` and `zonedWorkouts` per bucket and in the totals,
+plus `heartRateZoneModel` for labels. On the dashboard: the **Zones** metric (stacked per
+period — pick Week), its data table, zone columns in the heart-rate table, and a bar per
+row in Recent workouts. Zones use the heatmap's validated ramp (zone 1 grey), not a new one.
+
+Rows imported before this have no histogram: run `npm run sync` (or `npm run import`) once to
+backfill. Health Auto Export fills it from a dated `heartRateData` series if one arrives —
+that field name is from the app's docs, unverified. Shortcut posts and the Strava archive
+carry no stream and show no zones.
+
 ### Personal relabels at parse time
 
 `relabelActivity` in `src/domain/activityType.ts` corrects the *stored* type for cases

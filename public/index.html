@@ -57,6 +57,14 @@
      Always paired with a label — never colour alone. */
   --status-good:    #0ca30c;
   --status-warn:    #fab219;
+  /* Heart-rate zones are ordinal, so they borrow the heatmap's validated ramp rather than
+     a new one: zone 1 is the de-emphasis grey, zones 2–5 are heat steps 1–4. References,
+     not hex, so they follow the theme with the ramp. */
+  --zone-1:         var(--cat-rest);
+  --zone-2:         var(--heat-1);
+  --zone-3:         var(--heat-2);
+  --zone-4:         var(--heat-3);
+  --zone-5:         var(--heat-4);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -181,6 +189,9 @@ select:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; 
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
 .legend i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+/* Per-workout time-in-zone bar in the recent list; the numbers are in its label and the tables. */
+.zone-bar { display: flex; gap: 1px; width: 84px; height: 8px; border-radius: 2px; overflow: hidden; margin-left: auto; }
+.zone-bar i { display: block; height: 100%; }
 
 /* ---- KPI row ---- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
@@ -427,6 +438,7 @@ tbody tr:last-child td { border-bottom: 0; }
           <button type="button" data-metric="distanceMeters">Distance</button>
           <button type="button" data-metric="workouts">Count</button>
           <button type="button" data-metric="heartRate">Heart rate</button>
+          <button type="button" data-metric="zones">Zones</button>
         </div>
       </div>
       <div class="note" id="trend-note"></div>
@@ -575,7 +587,21 @@ const METRICS = {
   durationSeconds: { label: "Time",     title: "Time over time",     fmt: (v) => formatDuration(v),             axis: (v) => `${Math.round(v / 3600)}h` },
   distanceMeters:  { label: "Distance", title: "Distance over time", fmt: (v) => formatDistance(v),             axis: (v) => `${Math.round(v / 1000)} km` },
   workouts:        { label: "Count",    title: "Workouts over time", fmt: (v) => `${v}`,                        axis: (v) => `${v}` },
+  zones:           { label: "Zones",    title: "Time in heart-rate zones", fmt: (v) => formatDuration(v),       axis: (v) => (v >= 3600 ? `${Math.round(v / 3600)}h` : `${Math.round(v / 60)}m`) },
 };
+
+/* Heart-rate zones: % of heart-rate reserve, resolved server-side per workout against the
+   max it was scored with. Five fixed series in a fixed order, coloured by role. */
+const ZONES = [1, 2, 3, 4, 5].map((n) => ({ slug: `zone-${n}`, index: n - 1, label: `Zone ${n}`, color: `var(--zone-${n})` }));
+
+/** "Zone 2 · 134–147 bpm", from the summary's model at today's reference. */
+function zoneRangeLabel(i) {
+  const floors = state.summary?.heartRateZoneModel?.bpmFloors;
+  const pct = state.summary?.heartRateZoneModel?.reserveFloors;
+  if (!floors || !pct) return ZONES[i].label;
+  if (i === 0) return `${ZONES[i].label} · <${floors[1]} bpm`;
+  return `${ZONES[i].label} · ${floors[i]}${i < floors.length - 1 ? `–${floors[i + 1] - 1}` : "+"} bpm`;
+}
 
 function formatDuration(seconds) {
   const total = Math.round(seconds / 60);
@@ -777,14 +803,27 @@ function renderTrend() {
     return;
   }
 
-  // Filtered to one activity: a single series, in that activity's own colour so its
-  // identity survives the filter. Otherwise stack the activities.
-  const series = state.activity
+  const zoned = state.metric === "zones";
+  if (zoned && !(state.summary?.totals?.zonedWorkouts > 0)) {
+    host.replaceChildren(emptyNote("No heart-rate recordings in this range. Zones come from the sample stream in the Health export — run npm run sync to backfill."));
+    document.getElementById("trend-legend").replaceChildren();
+    document.getElementById("trend-note").textContent = "";
+    return;
+  }
+
+  // Zones stack the five zones, bottom-up from easy. Filtered to one activity: a single
+  // series, in that activity's own colour so its identity survives the filter. Otherwise
+  // stack the activities.
+  const series = zoned
+    ? ZONES.map((z) => ({ ...z, label: zoneRangeLabel(z.index) }))
+    : state.activity
     ? [{ slug: state.activity, members: [state.activity], label: activityLabel(state.activity) }]
     : seriesFor(buckets);
+  const colorOf = (s) => s.color ?? seriesColor(s.slug);
 
-  const valueOf = (bucket, members) =>
-    members.reduce((sum, slug) => sum + (bucket.byActivity?.[slug]?.[state.metric] ?? 0), 0);
+  const valueOf = zoned
+    ? (bucket, _members, s) => bucket.heartRateZones?.[s.index] ?? 0
+    : (bucket, members) => members.reduce((sum, slug) => sum + (bucket.byActivity?.[slug]?.[state.metric] ?? 0), 0);
 
   const width = Math.max(320, host.clientWidth || 640);
   const padL = 46, padR = 12, padT = 12, xAxisBand = 26;
@@ -796,7 +835,7 @@ function renderTrend() {
   const slot = innerW / buckets.length;
   const barW = Math.max(1, Math.min(MAX_BAR, slot - BAR_GAP));
 
-  const totals = buckets.map((b) => series.reduce((sum, s) => sum + valueOf(b, s.members), 0));
+  const totals = buckets.map((b) => series.reduce((sum, s) => sum + valueOf(b, s.members, s), 0));
   const ticks = niceTicks(Math.max(...totals));
   const scaleMax = ticks[ticks.length - 1] || 1;
   const y = (v) => padT + plotH - (v / scaleMax) * plotH;
@@ -813,7 +852,7 @@ function renderTrend() {
     const cx = padL + slot * i + slot / 2;
     const x = cx - barW / 2;
     const segments = series
-      .map((s) => ({ ...s, value: valueOf(bucket, s.members) }))
+      .map((s) => ({ ...s, value: valueOf(bucket, s.members, s) }))
       .filter((s) => s.value > 0);
 
     // The hit target spans the whole slot and precedes the marks, so a rest period is
@@ -834,7 +873,7 @@ function renderTrend() {
       const top = cursor - drawn;
       stack.appendChild(svgEl("path", {
         // Inline, because the `.mark` class rule would otherwise win over a fill attribute.
-        style: `fill: ${seriesColor(segment.slug)}`,
+        style: `fill: ${colorOf(segment)}`,
         // Only the topmost segment gets the rounded data-end.
         d: barPath(x, top, barW, drawn, index === segments.length - 1 ? 4 : 0, true),
       }));
@@ -842,9 +881,10 @@ function renderTrend() {
     });
 
     const rows = segments.length
-      ? [...segments].reverse().map((s) => [s.label.toLowerCase(), metric.fmt(s.value), seriesColor(s.slug)])
-      : [["no workouts", "—", null]];
-    if (segments.length > 1) rows.push(["total", metric.fmt(totals[i]), null]);
+      ? [...segments].reverse().map((s) => [zoned ? ZONES[s.index].label.toLowerCase() : s.label.toLowerCase(), metric.fmt(s.value), colorOf(s)])
+      : [[zoned ? "no heart-rate recording" : "no workouts", "—", null]];
+    if (segments.length > 1) rows.push([zoned ? "recorded" : "total", metric.fmt(totals[i]), null]);
+    if (zoned && bucket.zonedWorkouts) rows.push(["workouts with HR", `${bucket.zonedWorkouts} of ${bucket.workouts}`, null]);
     attachTip(hit, formatPeriodLong(bucket.period, state.summary.granularity), rows);
 
     if (i % labelEvery === 0) {
@@ -858,6 +898,16 @@ function renderTrend() {
   const avg = totals.reduce((a, b) => a + b, 0) / buckets.length;
   const active = buckets.filter((b, i) => totals[i] > 0).length;
   const unit = state.summary.granularity;
+  if (zoned) {
+    const t = state.summary.totals;
+    const recorded = t.heartRateZones.reduce((a, b) => a + b, 0);
+    const hard = t.heartRateZones[3] + t.heartRateZones[4];
+    document.getElementById("trend-note").textContent =
+      `${t.zonedWorkouts} of ${t.workouts} workouts have a heart-rate recording · ${metric.fmt(recorded)} recorded, ` +
+      `${Math.round((hard / Math.max(1, recorded)) * 100)}% in zones 4–5 · ${metric.fmt(avg)} per ${unit} · ` +
+      `zones are % of heart-rate reserve (60/70/80/90), against each workout's own max`;
+    return;
+  }
   document.getElementById("trend-note").textContent =
     `${buckets.length} ${unit}s · ${active} with a workout · ${metric.fmt(avg)} average per ${unit}`;
 }
@@ -870,7 +920,7 @@ function renderLegendInto(host, series) {
   host.replaceChildren(...series.map((s) => {
     const item = document.createElement("span");
     const swatch = document.createElement("i");
-    swatch.style.background = seriesColor(s.slug);
+    swatch.style.background = s.color ?? seriesColor(s.slug);
     const text = document.createElement("span");
     text.textContent = s.label;
     item.append(swatch, text);
@@ -1046,6 +1096,7 @@ function renderHeartRate() {
       ...(w.minHeartRate ? [["min", `${w.minHeartRate}`, null]] : []),
       ...(w.maxHeartRateReference ? [["scored against", `${w.maxHeartRateReference}`, null]] : []),
       ["duration", formatDuration(w.durationSeconds), null],
+      ...(w.heartRateZones ? ZONES.map((z) => [z.label.toLowerCase(), formatDuration(w.heartRateZones[z.index]), z.color]).reverse() : []),
     ]);
   }
   host.replaceChildren(svg);
@@ -1064,13 +1115,15 @@ function renderHeartRate() {
 function renderHeartRateTable() {
   const rows = [...hrWorkouts()].reverse();
   document.getElementById("trend-table").replaceChildren(buildTable(
-    ["Date", "Activity", { text: "Avg", num: true }, { text: "Min", num: true }, { text: "Max", num: true }],
+    ["Date", "Activity", { text: "Avg", num: true }, { text: "Min", num: true }, { text: "Max", num: true },
+     ...ZONES.map((z) => ({ text: `Z${z.index + 1}`, num: true }))],
     rows.map((w) => [
       new Date(w.startedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }),
       activityLabel(w.activityType),
       { text: `${w.averageHeartRate}`, num: true },
       { text: w.minHeartRate ? `${w.minHeartRate}` : "—", num: true },
       { text: w.maxHeartRate ? `${w.maxHeartRate}` : "—", num: true },
+      ...ZONES.map((z) => ({ text: w.heartRateZones ? formatDuration(w.heartRateZones[z.index]) : "—", num: true })),
     ]),
   ));
 }
@@ -1674,13 +1727,14 @@ function renderRecent() {
   }
 
   host.replaceChildren(buildTable(
-    ["Date", "Activity", { text: "Time", num: true }, { text: "Effort", num: true }],
+    ["Date", "Activity", { text: "Time", num: true }, { text: "Effort", num: true }, { text: "Zones", num: true }],
     recent.map((w) => [
       new Date(w.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
       activityLabel(w.activityType),
       { text: formatDuration(w.durationSeconds), num: true },
       // An effort scored without heart rate is an estimate; mark it rather than implying precision.
       { text: `${Math.round(w.effort)}${w.effortModel === "met-minutes" ? "*" : ""}`, num: true },
+      w.heartRateZones ? { el: zoneBar(w.heartRateZones), num: true } : { text: "—", num: true },
     ]),
   ));
 
@@ -1693,11 +1747,43 @@ function renderRecent() {
   }
 }
 
+/** Proportional bar of a workout's time in zone; the values ride along as its label. */
+function zoneBar(zones) {
+  const total = zones.reduce((a, b) => a + b, 0) || 1;
+  const bar = document.createElement("span");
+  bar.className = "zone-bar";
+  bar.setAttribute("role", "img");
+  const text = ZONES.map((z) => `Z${z.index + 1} ${formatDuration(zones[z.index])}`).join(" · ");
+  bar.setAttribute("aria-label", text);
+  bar.title = text;
+  for (const z of ZONES) {
+    if (!zones[z.index]) continue;
+    const seg = document.createElement("i");
+    seg.style.background = z.color;
+    seg.style.width = `${(zones[z.index] / total) * 100}%`;
+    bar.appendChild(seg);
+  }
+  return bar;
+}
+
 /** The table view every chart needs: the same numbers, WCAG-clean, no hovering. */
 function renderTrendTable() {
   if (state.metric === "heartRate") return renderHeartRateTable();
   const host = document.getElementById("trend-table");
   const buckets = state.summary?.buckets ?? [];
+  if (state.metric === "zones") {
+    host.replaceChildren(buildTable(
+      // Short headers: the bpm range of each zone is in the legend directly above.
+      ["Period", ...ZONES.map((z) => ({ text: `Z${z.index + 1}`, num: true })), { text: "Recorded", num: true }, { text: "With HR", num: true }],
+      buckets.map((b) => [
+        formatPeriodLong(b.period, state.summary.granularity),
+        ...ZONES.map((z) => ({ text: b.zonedWorkouts ? formatDuration(b.heartRateZones[z.index]) : "—", num: true })),
+        { text: b.zonedWorkouts ? formatDuration(b.heartRateZones.reduce((a, c) => a + c, 0)) : "—", num: true },
+        { text: `${b.zonedWorkouts ?? 0} of ${b.workouts}`, num: true },
+      ]),
+    ));
+    return;
+  }
   host.replaceChildren(buildTable(
     ["Period", { text: "Workouts", num: true }, { text: "Active days", num: true },
      { text: "Time", num: true }, { text: "Distance", num: true }, { text: "Effort", num: true }],

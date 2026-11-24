@@ -7,6 +7,7 @@ import { parseAppleDate } from "./shortcutPayload.js";
 import { toKg, type WeightReading } from "../domain/bodyWeight.js";
 import type { RecoveryMetric, RecoverySample, SleepStage } from "../domain/recovery.js";
 import { toKcal, toMeters, toSeconds } from "./units.js";
+import { buildHistogram, encodeHistogram, type HeartRateSample } from "../domain/heartRateZones.js";
 
 /**
  * Apple's Health export is a single `export.xml` that routinely runs to hundreds of megabytes,
@@ -47,6 +48,16 @@ class HeartRateIndex {
 
   get size(): number {
     return this.times.length;
+  }
+
+  /** Every sample inside [from, to], in time order. */
+  between(from: number, to: number): HeartRateSample[] {
+    if (!this.sorted) this.sort();
+    let lo = 0, hi = this.times.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (this.times[mid]! < from) lo = mid + 1; else hi = mid; }
+    const out: HeartRateSample[] = [];
+    for (let i = lo; i < this.times.length && this.times[i]! <= to; i++) out.push({ at: this.times[i]!, bpm: this.values[i]! });
+    return out;
   }
 
   /** Average, min and max inside [from, to], or undefined when too thin to trust. */
@@ -305,9 +316,14 @@ function toWorkoutInput(pending: PendingWorkout, heartRate?: HeartRateIndex): Wo
   const durationSeconds = resolveDuration(a, startedAt, endedAt);
   if (durationSeconds === undefined) throw new Error("Workout has neither duration nor endDate");
 
+  const resolvedEnd = endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000);
+  // Time in zone needs the stream itself, whoever wrote the statistics: Apple's own
+  // workouts carry a summary *and* leave their samples as loose records.
+  const histogram = heartRate && heartRate.size > 0
+    ? buildHistogram(heartRate.between(startedAt.getTime(), resolvedEnd.getTime()), startedAt.getTime(), resolvedEnd.getTime())
+    : undefined;
   // The workout's own statistics win; loose samples fill in only when there are none.
   if (pending.averageHeartRate === undefined && heartRate && heartRate.size > 0) {
-    const resolvedEnd = endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000);
     const joined = heartRate.summarise(startedAt.getTime(), resolvedEnd.getTime());
     if (joined) {
       pending.averageHeartRate = joined.average;
@@ -334,6 +350,7 @@ function toWorkoutInput(pending: PendingWorkout, heartRate?: HeartRateIndex): Wo
     durationSeconds: Math.round(durationSeconds),
     source: "health-export",
     ...present("routeFile", pending.routeFile),
+    ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}),
     ...present("distanceMeters", distance),
     ...present("activeEnergyKcal", activeEnergy),
     ...present("totalEnergyKcal", totalEnergy),

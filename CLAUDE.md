@@ -319,6 +319,11 @@ malformed envelope still returns 400. Keep that asymmetry.
   the staged one — never a sum across sources. Export parsing: the recovery hook sits in
   the same `onopentag` as body mass; the record types are grouped in the file, so a test on
   the first 200 MB sees none of them.
+- **Time in zone is a per-bpm histogram on the row, zones at read time** (`heartRateZones.ts`).
+  `heartRateHistogram` is built from the export's loose HR records for every workout (Apple's
+  own too); zones are % of HR reserve against the row's `maxHeartRateReference`. Never store
+  zone seconds — the reference moves on rescore. `/api/workouts` swaps the histogram for
+  `heartRateZones`; rows written before 2026-11-24 need a re-import (`npm run sync`) to get one.
 - **Body weight is not a workout.** Separate domain (`bodyWeight.ts`), separate table and
   repository, one row per local day, earliest reading wins. The export parser delivers it
   through the `onBodyMass` hook rather than a second pass over a 500 MB file. The weight

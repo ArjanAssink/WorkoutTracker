@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { parseHealthExport, type ParseStats } from "../src/ingest/healthExport.js";
 import type { WorkoutInput } from "../src/domain/workout.js";
+import { decodeHistogram } from "../src/domain/heartRateZones.js";
 
 async function parse(xml: string): Promise<{ workouts: WorkoutInput[]; stats: ParseStats }> {
   const stats: ParseStats = { workoutsSeen: 0, workoutsParsed: 0, skipped: [] };
@@ -135,6 +136,38 @@ describe("joining loose heart-rate samples to workouts without statistics", () =
     expect(workouts[0]!.averageHeartRate).toBe(120); // parser rounds to whole bpm
     expect(workouts[0]!.minHeartRate).toBe(110);
     expect(workouts[0]!.maxHeartRate).toBe(129);
+  });
+
+  it("records seconds per bpm from the samples, for time in zone", async () => {
+    const xml = `<HealthData>
+      ${samples("2024-01-08 19:00:00 +0100", 100, 2, 110)}
+      <Workout workoutActivityType="HKWorkoutActivityTypeMartialArts" duration="100" durationUnit="min" sourceName="Polar Flow"
+               startDate="2024-01-08 19:00:00 +0100" endDate="2024-01-08 20:40:00 +0100"/>
+    </HealthData>`;
+    const w = (await parse(xml)).workouts[0]!;
+    const h = decodeHistogram(w.heartRateHistogram)!;
+    expect(h.from).toBe(110);
+    expect(h.seconds).toHaveLength(20);
+    // Samples every 30 s across the whole 100 minutes: every second is accounted for.
+    expect(h.seconds.reduce((a, b) => a + b, 0)).toBe(6000);
+  });
+
+  it("records the histogram for Apple's own workouts too, which carry statistics", async () => {
+    const xml = `<HealthData>
+      ${samples("2024-01-08 19:00:00 +0100", 60, 12, 150)}
+      <Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="60" durationUnit="min"
+               startDate="2024-01-08 19:00:00 +0100" endDate="2024-01-08 20:00:00 +0100">
+        <WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate" average="140" minimum="100" maximum="170" unit="count/min"/>
+      </Workout>
+    </HealthData>`;
+    const w = (await parse(xml)).workouts[0]!;
+    expect(w.averageHeartRate).toBe(140);
+    expect(decodeHistogram(w.heartRateHistogram)?.from).toBe(150);
+  });
+
+  it("stores no histogram when the samples are a glance, not a recording", async () => {
+    const w = (await parse(MODERN)).workouts[0]!;
+    expect(w.heartRateHistogram).toBeUndefined();
   });
 
   it("leaves a workout's own statistics alone when it has them", async () => {

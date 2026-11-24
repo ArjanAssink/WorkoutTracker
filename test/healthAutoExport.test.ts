@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decodeHistogram } from "../src/domain/heartRateZones.js";
 import {
   extractWorkoutArray,
   HealthAutoExportError,
@@ -100,6 +101,21 @@ describe("measurement shapes the app actually sends", () => {
       workouts: [{ ...base, distance: [{ qty: 2, units: "km" }, { qty: 1.5, units: "km" }] }],
     }).workouts[0]!;
     expect(w.distanceMeters).toBeCloseTo(3500, 6);
+  });
+
+  it("turns a dated per-minute heart-rate series into seconds per bpm", () => {
+    const minute = (m: number) => `2024-02-06 07:${String(m).padStart(2, "0")}:00 -0800`;
+    const heartRateData = Array.from({ length: 30 }, (_, m) => ({ date: minute(m), Avg: m < 15 ? 130 : 160, Min: 120, Max: 170, units: "bpm" }));
+    const w = parseHealthAutoExportBatch({ workouts: [{ ...base, heartRateData }] }).workouts[0]!;
+    const h = decodeHistogram(w.heartRateHistogram)!;
+    expect(h.from).toBe(130);
+    expect(h.seconds[0]).toBe(900);
+    expect(h.seconds[30]).toBe(900);
+  });
+
+  it("stores no histogram for an undated heart-rate series", () => {
+    const w = parseHealthAutoExportBatch({ workouts: [{ ...base, heartRate: [{ Avg: 140 }, { Avg: 150 }] }] }).workouts[0]!;
+    expect(w.heartRateHistogram).toBeUndefined();
   });
 
   it("averages a heart-rate series for avg and takes the peak for max", () => {

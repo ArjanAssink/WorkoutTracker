@@ -24,6 +24,11 @@ export interface Workout {
   averageHeartRate?: number;
   minHeartRate?: number;
   maxHeartRate?: number;
+  /**
+   * Seconds at each whole bpm, encoded by `encodeHistogram` (`heartRateZones.ts`). Present
+   * only when a sample stream reached the parser; zones are resolved from it at read time.
+   */
+  heartRateHistogram?: string;
   /** Effort score in arbitrary "training load" points. See `effort.ts`. */
   effort: number;
   /** Which of the two effort models produced {@link effort}. */

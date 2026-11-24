@@ -5,6 +5,7 @@ import type { WorkoutInput } from "../domain/workout.js";
 import { parseAppleDate } from "./shortcutPayload.js";
 import type { NightSummary, RecoveryMetric, RecoverySample } from "../domain/recovery.js";
 import { toKcal, toMeters } from "./units.js";
+import { buildHistogram, encodeHistogram, type HeartRateSample } from "../domain/heartRateZones.js";
 
 /**
  * Health Auto Export (healthyapps.dev) posts batches of workouts to a REST endpoint on a
@@ -50,6 +51,9 @@ const workoutSchema = z
     minHeartRate: z.unknown().optional(),
     maxHeartRate: z.unknown().optional(),
     heartRate: z.unknown().optional(),
+    // Per-minute series ({ date, Avg, Min, Max }) when granular data is on. Field name from
+    // the app's documentation, not yet seen in a real payload.
+    heartRateData: z.unknown().optional(),
   })
   .passthrough();
 
@@ -220,15 +224,18 @@ function parseOne(entry: unknown): WorkoutInput {
   }
 
   const activeEnergy = measure(w.activeEnergyBurned ?? w.activeEnergy, toKcal, "kcal", "sum");
+  const end = endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000);
+  const histogram = buildHistogram(timedHeartRate(w.heartRateData ?? w.heartRate), startedAt.getTime(), end.getTime());
   const totalEnergy = measure(w.totalEnergyBurned ?? w.totalEnergy, toKcal, "kcal", "sum");
 
   return {
     activityType: normaliseActivityType(w.name),
     startedAt: startedAt.toISOString(),
-    endedAt: (endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000)).toISOString(),
+    endedAt: end.toISOString(),
     durationSeconds: Math.round(durationSeconds),
     source: "health-export",
     sourceName: "Health Auto Export",
+    ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}),
     ...set("distanceMeters", measure(w.distance, toMeters, "m", "sum")),
     ...set("activeEnergyKcal", activeEnergy),
     ...set("totalEnergyKcal", totalEnergy),
@@ -318,6 +325,20 @@ function readSamples(value: unknown, reduce: Reduce): Sample[] {
     if (typeof candidate === "number" && Number.isFinite(candidate)) return [{ qty: candidate, units }];
   }
   return [];
+}
+
+/** Timestamped readings from a heart-rate series, for time in zone; anything undated is skipped. */
+function timedHeartRate(value: unknown): HeartRateSample[] {
+  if (!Array.isArray(value)) return [];
+  const out: HeartRateSample[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const o = entry as Record<string, unknown>;
+    const at = typeof o["date"] === "string" ? parseAppleDate(o["date"])?.getTime() : undefined;
+    const bpm = [o["Avg"], o["avg"], o["qty"]].find((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (at !== undefined && bpm !== undefined) out.push({ at, bpm });
+  }
+  return out;
 }
 
 function round(value: number | undefined): number | undefined {
