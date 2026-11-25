@@ -8,6 +8,7 @@ import { toKg, type WeightReading } from "../domain/bodyWeight.js";
 import type { RecoveryMetric, RecoverySample, SleepStage } from "../domain/recovery.js";
 import { toKcal, toMeters, toSeconds } from "./units.js";
 import { buildHistogram, encodeHistogram, type HeartRateSample } from "../domain/heartRateZones.js";
+import { buildSeries, encodeSeries } from "../domain/heartRateSeries.js";
 
 /**
  * Apple's Health export is a single `export.xml` that routinely runs to hundreds of megabytes,
@@ -319,9 +320,9 @@ function toWorkoutInput(pending: PendingWorkout, heartRate?: HeartRateIndex): Wo
   const resolvedEnd = endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000);
   // Time in zone needs the stream itself, whoever wrote the statistics: Apple's own
   // workouts carry a summary *and* leave their samples as loose records.
-  const histogram = heartRate && heartRate.size > 0
-    ? buildHistogram(heartRate.between(startedAt.getTime(), resolvedEnd.getTime()), startedAt.getTime(), resolvedEnd.getTime())
-    : undefined;
+  const stream = heartRate && heartRate.size > 0 ? heartRate.between(startedAt.getTime(), resolvedEnd.getTime()) : [];
+  const histogram = stream.length ? buildHistogram(stream, startedAt.getTime(), resolvedEnd.getTime()) : undefined;
+  const series = stream.length ? buildSeries(stream, startedAt.getTime(), resolvedEnd.getTime()) : undefined;
   // The workout's own statistics win; loose samples fill in only when there are none.
   if (pending.averageHeartRate === undefined && heartRate && heartRate.size > 0) {
     const joined = heartRate.summarise(startedAt.getTime(), resolvedEnd.getTime());
@@ -351,6 +352,7 @@ function toWorkoutInput(pending: PendingWorkout, heartRate?: HeartRateIndex): Wo
     source: "health-export",
     ...present("routeFile", pending.routeFile),
     ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}),
+    ...(series ? { heartRateSeries: encodeSeries(series) } : {}),
     ...present("distanceMeters", distance),
     ...present("activeEnergyKcal", activeEnergy),
     ...present("totalEnergyKcal", totalEnergy),

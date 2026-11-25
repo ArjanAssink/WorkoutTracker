@@ -121,7 +121,30 @@ input[type="search"]:focus-visible { outline: 2px solid var(--series-1); outline
 .zone-bar i { display: block; height: 100%; }
 #list tr.month th { font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--text-secondary); padding-top: 18px; font-weight: 600; }
 #list tr.month th .note { font-weight: 400; color: var(--text-muted); margin-left: 8px; }
-#list tbody tr.row:hover td { background: var(--hover-wash); }
+#list tbody tr.row { cursor: pointer; } #list tbody tr.row:hover td { background: var(--hover-wash); }
+/* Tags: neutral chips — identity is the text, never a hue. */
+.tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 8px; vertical-align: 1px; }
+.tag { font-size: 11px; line-height: 1; color: var(--text-secondary); background: var(--hover-wash); border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px; white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
+.tag button { font: inherit; color: var(--text-muted); background: none; border: 0; padding: 0 0 0 2px; cursor: pointer; line-height: 1; }
+.tag button:hover { color: var(--text-primary); } .tag button:focus-visible { outline: 2px solid var(--series-1); border-radius: 2px; }
+.tag-editor { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0 0 14px; }
+.tag-editor .tags { margin-left: 0; }
+.tag-editor input { font: inherit; font-size: 12px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; width: 130px; }
+.tag-editor input::-webkit-calendar-picker-indicator { display: none !important; }
+.tag-editor input:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.tag-editor .err { font-size: 12px; margin: 0; padding: 0; }
+/* Heart rate over the session: one series, so one hue and no legend; zone floors are recessive guides. */
+.hr-chart { margin: 0 0 16px; } .hr-plot { position: relative; } .hr-chart h3 { font-size: 12px; font-weight: 600; margin: 0 0 8px; color: var(--text-secondary); }
+.hr-chart svg { touch-action: pan-y; } .hr-chart svg:focus-visible { outline: 2px solid var(--series-1); outline-offset: 4px; border-radius: 4px; }
+svg .hr-line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg .zone-line { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; shape-rendering: crispEdges; }
+svg .cross { stroke: var(--text-muted); stroke-width: 1; shape-rendering: crispEdges; }
+svg .hr-dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+svg text.peak { fill: var(--text-secondary); font-weight: 600; }
+.hr-tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.12); font-variant-numeric: tabular-nums; transform: translate(-50%, -100%); }
+.hr-tip strong { font-weight: 600; } .hr-tip span { color: var(--text-muted); margin-left: 6px; }
+.hr-chart details { margin-top: 6px; font-size: 12px; } .hr-chart summary { cursor: pointer; color: var(--text-muted); }
+.hr-chart details .scroll { max-height: 220px; overflow: auto; margin-top: 6px; }
 #list tr.row[data-open="1"] td { border-bottom-color: transparent; }
 #list tr.row.target td { box-shadow: inset 0 -2px 0 var(--series-1); }
 .when { white-space: nowrap; } .when small { color: var(--text-muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
@@ -188,7 +211,7 @@ tr.detail > td { padding: 4px 0 18px; }
           <option value="effort">Hardest effort</option>
           <option value="heartRate">Highest average HR</option>
         </select></div>
-      <div class="filter-set grow"><input id="search" type="search" placeholder="Search notes, source…" aria-label="Search notes and source"></div>
+      <div class="filter-set grow"><input id="search" type="search" placeholder="Search notes, tags, source…" aria-label="Search notes, tags and source"></div>
     </div>
 
     <div id="kpis" class="kpis"></div>
@@ -207,7 +230,7 @@ tr.detail > td { padding: 4px 0 18px; }
 "use strict";
 const KEY_STORAGE = "workout-tracker.apiKey", THEME_STORAGE = "workout-tracker.theme";
 const PAGE = 100;
-const state = { key: "", all: [], truncated: false, range: "365", activity: "", sort: "newest", query: "", shown: PAGE, open: new Set(), target: "" };
+const state = { key: "", all: [], truncated: false, range: "365", activity: "", sort: "newest", query: "", shown: PAGE, open: new Set(), target: "", tags: new Map() };
 function readStored(n) { try { return localStorage.getItem(n) ?? ""; } catch { return ""; } }
 function writeStored(n, v) { try { v ? localStorage.setItem(n, v) : localStorage.removeItem(n); } catch {} }
 
@@ -263,7 +286,7 @@ function inScope() {
   const q = state.query.trim().toLowerCase();
   return state.all.filter((w) => Date.parse(w.startedAt) >= since
     && (!state.activity || w.activityType === state.activity)
-    && (!q || [w.label, w.notes, w.sourceName, w.source].some((s) => s && s.toLowerCase().includes(q))));
+    && (!q || [w.label, w.notes, w.sourceName, w.source, ...tagsOf(w)].some((s) => s && s.toLowerCase().includes(q))));
 }
 const SORTS = {
   newest: (a, b) => b.startedAt.localeCompare(a.startedAt),
@@ -304,16 +327,22 @@ const HEADERS = [["Date"], ["Activity"], ["Time", "num"], ["Distance", "num opt"
 
 function rowFor(w) {
   const open = state.open.has(w.id);
+  // The name stays a real button so the row opens from the keyboard; its click bubbles to the row.
   const btn = el("button", { class: "open-btn", type: "button", "aria-expanded": String(open), "aria-controls": `d-${w.id}`, text: w.label });
-  btn.addEventListener("click", () => { state.open.has(w.id) ? state.open.delete(w.id) : state.open.add(w.id); renderList(); });
+  const tags = tagsOf(w);
   const tr = el("tr", { class: "row", id: w.id, "data-open": open ? "1" : "0" },
     el("td", { class: "when" }, rowDay(w.startedAt), el("small", { text: clock(w.startedAt) })),
-    el("td", {}, btn),
+    el("td", {}, btn, tags.length ? el("span", { class: "tags" }, ...tags.map((t) => el("span", { class: "tag", text: t }))) : null),
     el("td", { class: "num", text: formatDuration(w.durationSeconds) }),
     el("td", { class: "num opt", text: w.distanceMeters ? kmShort(w.distanceMeters) : "—" }),
     el("td", { class: "num opt", text: w.averageHeartRate ? `${Math.round(w.averageHeartRate)}` : "—" }),
     el("td", { class: "num", text: effortText(w) }),
     el("td", { class: "num opt" }, w.heartRateZones ? zoneBar(w.heartRateZones) : "—"));
+  tr.addEventListener("click", (e) => {
+    // Selecting text in a row is not a request to open it.
+    if (e.target.closest("a") || String(getSelection?.() ?? "").length) return;
+    toggle(w.id);
+  });
   if (w.id === state.target) tr.classList.add("target");
   return tr;
 }
@@ -338,7 +367,10 @@ function detailFor(w) {
 
   const parts = [];
   if (w.notes) parts.push(el("p", { class: "notes", text: w.notes }));
+  parts.push(tagEditor(w));
   parts.push(el("dl", { class: "detail-grid" }, ...items));
+  // Filled once the row is in the document: the chart is sized to the space it lands in.
+  if (w.averageHeartRate) parts.push(el("div", { class: "hr-chart", id: `hr-${w.id}` }, el("h3", { text: "Heart rate over the session" }), el("div", { class: "note", text: "Loading heart rate…" })));
 
   let zonesPart = [el("div", { class: "note", text: w.averageHeartRate ? "Only summary heart rate was recorded — no sample stream to zone." : "No heart rate recorded." })];
   if (w.heartRateZones) {
@@ -406,6 +438,7 @@ function renderList() {
   }
   const table = el("table", {}, head, body);
   host.replaceChildren(table);
+  for (const w of shown) if (state.open.has(w.id) && w.averageHeartRate) fillHeartRate(w);
   if (rows.some(isEstimate)) host.append(el("div", { class: "note", style: "margin-top:8px", text: "* effort estimated from duration and activity — no heart rate recorded" }));
 }
 
@@ -416,6 +449,152 @@ function renderActivities() {
   const opts = [...counts].sort((a, b) => b[1].n - a[1].n).map(([slug, c]) => el("option", { value: slug, text: `${c.label} (${c.n.toLocaleString()})` }));
   select.replaceChildren(el("option", { value: "", text: `All activities (${state.all.length.toLocaleString()})` }), ...opts);
   select.value = state.activity;
+}
+
+function toggle(id) { state.open.has(id) ? state.open.delete(id) : state.open.add(id); renderList(); }
+
+/* ---- tags ---- */
+const tagsOf = (w) => state.tags.get(w.id) ?? [];
+function allTags() { const n = new Map(); for (const list of state.tags.values()) for (const t of list) n.set(t, (n.get(t) ?? 0) + 1); return [...n].sort((a, b) => b[1] - a[1]).map(([t]) => t); }
+function tagEditor(w) {
+  const tags = tagsOf(w);
+  const input = el("input", { type: "text", id: `tag-in-${w.id}`, placeholder: tags.length ? "Add tag" : "Add a tag…", "aria-label": `Add a tag to this ${w.label}`, list: "tag-suggestions", maxlength: "32", autocomplete: "off" });
+  const err = el("div", { class: "err", hidden: "" });
+  const chips = tags.map((t) => {
+    const x = el("button", { type: "button", "aria-label": `Remove tag ${t}`, text: "×" });
+    x.addEventListener("click", () => saveTags(w, tags.filter((y) => y !== t), err));
+    return el("span", { class: "tag" }, t, x);
+  });
+  const add = () => { const v = input.value.split(",").map((t) => t.trim()).filter(Boolean); if (v.length) saveTags(w, [...tags, ...v], err, true); };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); }
+    else if (e.key === "Backspace" && !input.value && tags.length) saveTags(w, tags.slice(0, -1), err, true);
+  });
+  return el("div", { class: "tag-editor" }, el("span", { class: "filter-label", text: "Tags" }), chips.length ? el("span", { class: "tags" }, ...chips) : null, input, err);
+}
+async function saveTags(w, next, err, refocus = false) {
+  try {
+    const r = await fetch("/api/workouts/tags", { method: "POST", headers: { "x-api-key": state.key, "content-type": "application/json" }, body: JSON.stringify({ id: w.id, startedAt: w.startedAt, tags: next }) });
+    if (r.status === 401) { signOut("That key was rejected."); return; }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+    if (data.tags.length) state.tags.set(w.id, data.tags); else state.tags.delete(w.id);
+    renderSuggestions(); renderList();
+    if (refocus) document.getElementById(`tag-in-${w.id}`)?.focus();
+  } catch (e) { err.textContent = `Could not save: ${e.message}`; err.hidden = false; }
+}
+function renderSuggestions() {
+  let list = document.getElementById("tag-suggestions");
+  if (!list) { list = el("datalist", { id: "tag-suggestions" }); document.body.append(list); }
+  list.replaceChildren(...allTags().map((t) => el("option", { value: t })));
+}
+
+/* ---- heart rate over the session ---- */
+const hrCache = new Map(); // id → series | null (none stored) | Promise
+function fillHeartRate(w) {
+  const host = document.getElementById(`hr-${w.id}`);
+  if (!host) return;
+  const cached = hrCache.get(w.id);
+  if (cached === undefined) {
+    const p = fetch(`/api/workouts/heartrate?id=${encodeURIComponent(w.id)}&startedAt=${encodeURIComponent(w.startedAt)}`, { headers: { "x-api-key": state.key } })
+      .then(async (r) => { if (r.status === 404) return null; if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); })
+      .then((d) => { hrCache.set(w.id, d); fillHeartRate(w); })
+      .catch((e) => { hrCache.delete(w.id); const h = document.getElementById(`hr-${w.id}`); if (h) h.replaceChildren(h.firstChild, el("div", { class: "err", text: `Could not load heart rate: ${e.message}` })); });
+    hrCache.set(w.id, p);
+    return;
+  }
+  if (cached instanceof Promise) return;
+  const title = host.firstChild;
+  if (!cached || !cached.bpm.some((v) => v !== null)) {
+    host.replaceChildren(title, el("div", { class: "note", text: w.heartRateZones
+      ? "No stream stored for this workout yet — it arrives with the next Health export import."
+      : "Only summary heart rate was recorded — no sample stream to chart." }));
+    return;
+  }
+  host.replaceChildren(title, ...hrChart(w, cached, host.clientWidth || 640));
+}
+
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs = {}, text) { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text !== undefined) e.textContent = text; return e; }
+const elapsed = (s) => { const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? `${h}:${String(m % 60).padStart(2, "0")}` : `${m}m`; };
+const elapsedLong = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return `${h ? `${h}:${String(m).padStart(2, "0")}` : m}:${String(x).padStart(2, "0")}`; };
+
+function hrChart(w, data, width) {
+  const step = data.stepSeconds, pts = data.bpm, total = pts.length * step;
+  const H = 200, M = { top: 18, right: 34, bottom: 22, left: 34 };
+  const iw = Math.max(120, width - M.left - M.right), ih = H - M.top - M.bottom;
+  const values = pts.filter((v) => v !== null);
+  const zones = (w.heartRateZoneBpm ?? []).slice(1);
+  const lo = Math.floor((Math.min(...values) - 5) / 10) * 10, hi = Math.ceil((Math.max(...values) + 5) / 10) * 10;
+  const x = (s) => M.left + (s / total) * iw, y = (v) => M.top + ih - ((v - lo) / (hi - lo)) * ih;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${H}`, height: String(H), role: "img", tabindex: "0",
+    "aria-label": `Heart rate over ${formatDuration(w.durationSeconds)}: ${Math.min(...values)} to ${Math.max(...values)} bpm. Arrow keys step through it; the data table below lists every minute.` });
+
+  // y grid: every 10 or 20 bpm, recessive.
+  const yStep = hi - lo > 80 ? 20 : 10;
+  for (let v = Math.ceil(lo / yStep) * yStep; v <= hi; v += yStep) {
+    svg.append(svgEl("line", { class: "grid-line", x1: M.left, x2: M.left + iw, y1: y(v), y2: y(v) }));
+    svg.append(svgEl("text", { class: "tick-value", x: M.left - 6, y: y(v) + 4, "text-anchor": "end" }, String(v)));
+  }
+  // Zone floors for this workout's own reference, labelled at the right edge.
+  zones.forEach((b, i) => { if (b > lo && b < hi) {
+    svg.append(svgEl("line", { class: "zone-line", x1: M.left, x2: M.left + iw, y1: y(b), y2: y(b) }));
+    svg.append(svgEl("text", { x: M.left + iw + 6, y: y(b) + 4 }, `Z${i + 2}`));
+  } });
+  // x axis: elapsed time at a round interval giving about six ticks.
+  const tick = [60, 300, 600, 900, 1200, 1800, 3600, 7200].find((t) => total / t <= 7) ?? 7200;
+  svg.append(svgEl("line", { class: "axis-line", x1: M.left, x2: M.left + iw, y1: M.top + ih, y2: M.top + ih }));
+  for (let t = 0; t <= total; t += tick) svg.append(svgEl("text", { class: "tick-value", x: x(t), y: H - 4, "text-anchor": t === 0 ? "start" : "middle" }, t === 0 ? "0" : elapsed(t)));
+
+  // The line, broken at dropouts. Each point sits at the middle of its step.
+  let d = "", pen = false;
+  pts.forEach((v, i) => { if (v === null) { pen = false; return; } d += `${pen ? "L" : "M"}${x((i + 0.5) * step).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
+  svg.append(svgEl("path", { class: "hr-line", d }));
+
+  // One direct label: the peak.
+  const peakI = pts.indexOf(Math.max(...values));
+  const px = x((peakI + 0.5) * step), py = y(pts[peakI]);
+  svg.append(svgEl("circle", { class: "hr-dot", cx: px, cy: py, r: 4 }));
+  svg.append(svgEl("text", { class: "peak", x: Math.min(Math.max(px, M.left + 30), M.left + iw - 30), y: py - 8, "text-anchor": "middle" }, `peak ${pts[peakI]}`));
+
+  // Crosshair + tooltip, by pointer or arrow keys.
+  const cross = svgEl("line", { class: "cross", y1: M.top, y2: M.top + ih, visibility: "hidden" });
+  const dot = svgEl("circle", { class: "hr-dot", r: 4, visibility: "hidden" });
+  const hit = svgEl("rect", { x: M.left, y: 0, width: iw, height: H, fill: "transparent" });
+  svg.append(cross, dot, hit);
+  const tip = el("div", { class: "hr-tip", hidden: "" });
+  const start = Date.parse(w.startedAt);
+  let cur = -1;
+  const show = (i) => {
+    i = Math.max(0, Math.min(pts.length - 1, i)); cur = i;
+    const s = (i + 0.5) * step, v = pts[i], cx = x(s);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    if (v === null) dot.setAttribute("visibility", "hidden"); else { dot.setAttribute("cx", cx); dot.setAttribute("cy", y(v)); dot.setAttribute("visibility", "visible"); }
+    tip.replaceChildren(el("strong", { text: v === null ? "no reading" : `${v} bpm` }), el("span", { text: `${elapsedLong(i * step)} in · ${clock(new Date(start + s * 1000).toISOString())}` }));
+    tip.style.left = `${(cx / width) * 100}%`; tip.style.top = `${(v === null ? M.top : y(v)) - 10}px`; tip.hidden = false;
+  };
+  const hide = () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.hidden = true; cur = -1; };
+  const indexAt = (e) => { const r = svg.getBoundingClientRect(); const sx = ((e.clientX - r.left) / r.width) * width; return Math.floor(((sx - M.left) / iw) * total / step); };
+  hit.addEventListener("pointermove", (e) => show(indexAt(e)));
+  hit.addEventListener("pointerleave", hide);
+  svg.addEventListener("blur", hide);
+  svg.addEventListener("keydown", (e) => {
+    const jump = Math.max(1, Math.round(60 / step));
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); show((cur < 0 ? 0 : cur) + (e.key === "ArrowRight" ? jump : -jump)); }
+    else if (e.key === "Escape") hide();
+  });
+
+  // Values without hovering: one row per minute (or per step, when steps are longer).
+  const per = Math.max(1, Math.round(60 / step));
+  const rows = [];
+  for (let i = 0; i < pts.length; i += per) {
+    const slice = pts.slice(i, i + per).filter((v) => v !== null);
+    rows.push(el("tr", {}, el("td", { text: elapsedLong(i * step) }), el("td", { text: clock(new Date(start + i * step * 1000).toISOString()) }),
+      el("td", { class: "num", text: slice.length ? String(Math.round(slice.reduce((a, b) => a + b, 0) / slice.length)) : "—" })));
+  }
+  const table = el("details", {}, el("summary", { text: "Show data table" }), el("div", { class: "scroll" },
+    el("table", {}, el("thead", {}, el("tr", {}, el("th", { text: "Elapsed" }), el("th", { text: "Time" }), el("th", { class: "num", text: "Avg bpm" }))), el("tbody", {}, ...rows))));
+  return [el("div", { class: "hr-plot" }, svg, tip), table];
 }
 
 /* A link like /api/history#<id> opens that workout, widening the filters until it is in view. */
@@ -435,10 +614,16 @@ async function load() {
   const app = document.getElementById("app"), err = document.getElementById("error"); app.classList.add("stale"); err.hidden = true;
   try {
     // The whole history in one request: a few thousand rows, filtered here so every control is instant.
-    const r = await fetch("/api/workouts?days=7300&limit=10000", { headers: { "x-api-key": state.key } });
+    const [r, t] = await Promise.all([
+      fetch("/api/workouts?days=7300&limit=10000", { headers: { "x-api-key": state.key } }),
+      // Tags are a nicety: a failure here leaves the list working, untagged.
+      fetch("/api/workouts/tags", { headers: { "x-api-key": state.key } }).then((x) => (x.ok ? x.json() : { tags: {} })).catch(() => ({ tags: {} })),
+    ]);
     if (r.status === 401) { signOut("That key was rejected."); return; }
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     const data = await r.json();
+    state.tags = new Map(Object.entries(t.tags ?? {}));
+    renderSuggestions();
     state.all = data.workouts; state.truncated = data.truncated;
     byActivity.clear();
     for (const w of state.all) (byActivity.get(w.activityType) ?? byActivity.set(w.activityType, []).get(w.activityType)).push(w);

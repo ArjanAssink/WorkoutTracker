@@ -37,7 +37,9 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`  | `/api/notify/stale` | When the phone last pushed data, and whether the three-day silence alert would fire. |
 | `GET`  | `/api/inbox`     | Every message the app has sent (weekly summary, check-ins, milestones, alerts), with whether it reached Telegram. `#<id>` opens one. |
 | `GET`  | `/api/notifications` | The same as data, newest first (`?limit=&after=`): composed `html`, portable `spans`, plain `text`, `title`, `link`, per-channel `deliveries`; `next` is the cursor. |
-| `GET`  | `/api/history`   | Every workout, filterable and sortable, each opening to its detail: pace, heart rate, zones, effort against that activity's previous ten. `#<id>` opens one; the dashboard's recent list links there. |
+| `GET`  | `/api/history`   | Every workout, filterable and sortable; click a row to open its detail: tags, pace, heart rate over the session, zones, effort against that activity's previous ten. `#<id>` opens one; the dashboard's recent list links there. |
+| `GET`  | `/api/workouts/heartrate?id=&startedAt=` | Heart rate over one workout (`stepSeconds`, `bpm[]` with `null` gaps); 404 when no stream was stored. |
+| `GET`/`POST` | `/api/workouts/tags` | Every workout's tags (`{ tags: { <id>: [...] } }`), or replace one workout's: `{ id, startedAt, tags }`; an empty list clears them. |
 | `GET`  | `/api/strength`  | The Strength page: PRs over time, rep-max board, block tracker. |
 | `GET`  | `/api/recovery`  | The Recovery page: sleep, resting HR and HRV against training load. |
 | `GET`  | `/api/map`       | The Routes page: every GPS track, home as the hero and each place away as a card. |
@@ -936,6 +938,23 @@ whole bpm — stored on the row as `heartRateHistogram` (`"<first bpm>:<s>,<s>,�
 sample counts for the time until the next, capped at two minutes so a dropout is not
 smeared over; the same glance rule as above applies. Apple's own workouts get one too:
 their summary statistics are on the workout, but the samples are still loose records.
+
+### Heart rate over the session
+
+The same stream is also kept as a **downsampled series** for the history page's chart:
+fixed steps from the workout's start (5 s for an hour, coarser so no workout passes 720
+steps), each the mean of its readings, a reading carried across empty steps for up to 60 s
+and a gap after that. It lives in its own `heartrate` table (PK `<user>|YYYY-MM`, RK the
+workout id), never on the row, which every list reads thousands at a time; the page fetches
+one when a workout is opened. The export import and the Health Auto Export batch write it;
+workouts imported before this existed need a re-import (`npm run sync`) to get one.
+
+### Tags
+
+Free-form tags per workout, added in the history page's detail view and searchable from its
+search box. Lower-cased, at most 12 of 32 characters each. They live in the `tags` table
+(one partition, RK the workout id), not on the workout row, because every import
+Replace-upserts the row and would erase them.
 
 Zones are resolved **at read time**, never stored: five Karvonen zones on heart-rate reserve
 (below 60%, 60–70, 70–80, 80–90, 90%+), the reserve TRIMP uses — resting from

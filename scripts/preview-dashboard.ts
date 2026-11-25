@@ -16,6 +16,8 @@ import { scoreWithReference } from "../src/domain/scoring.js";
 import { summarise, type Granularity } from "../src/domain/summary.js";
 import { buildHistogram, encodeHistogram, presentWorkout, zoneModel } from "../src/domain/heartRateZones.js";
 import { buildWorkout, type Workout, type WorkoutInput } from "../src/domain/workout.js";
+import { buildSeries, decodeSeries, encodeSeries } from "../src/domain/heartRateSeries.js";
+import { parseTagUpdate } from "../src/domain/tags.js";
 import { resolveRange } from "../src/http/dateRange.js";
 import { DEFAULT_GOALS, reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../src/domain/goals.js";
 import { resolveWindow } from "../src/functions/getWeekly.js";
@@ -29,6 +31,9 @@ import { notificationId, presentNotification, titleOf, NOTIFICATION_LINKS, type 
 
 // Preview labels are deliberately temporary; the Function API persists real labels.
 const annotations = new Map<string, WeekAnnotation>();
+const tags = new Map<string, string[]>();
+/** Heart rate over each synthetic workout, by id — the preview's `heartrate` table. */
+const SERIES = new Map<string, string>();
 const PORT = Number(process.env["PREVIEW_PORT"] ?? 7099);
 const KEY = "preview";
 const PAGE = new URL("../../public/index.html", import.meta.url);
@@ -94,7 +99,8 @@ function generate(): Workout[] {
                 bpm: Math.min(i / 60, 1) * avg + (1 - Math.min(i / 60, 1)) * 95 + 14 * Math.sin(i / 40) + (random() - 0.5) * 8,
               }));
               const histogram = buildHistogram(stream, t0, t0 + minutes * 60_000);
-              return { ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}), averageHeartRate: avg, minHeartRate: avg - Math.round(25 + random() * 20), maxHeartRate: avg + Math.round(15 + random() * 25) };
+              const series = buildSeries(stream, t0, t0 + minutes * 60_000);
+              return { ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}), ...(series ? { heartRateSeries: encodeSeries(series) } : {}), averageHeartRate: avg, minHeartRate: avg - Math.round(25 + random() * 20), maxHeartRate: avg + Math.round(15 + random() * 25) };
             })()
           : {}),
         ...(choice.km ? { distanceMeters: Math.round((choice.km[0] + random() * (choice.km[1] - choice.km[0])) * 1000) } : {}),
@@ -108,7 +114,9 @@ function generate(): Workout[] {
   const observations = inputs.map((w) => ({ startedAt: w.startedAt, maxHeartRate: w.maxHeartRate }));
   for (const input of inputs) {
     const observed = trailingMaxHeartRate(observations, new Date(input.startedAt));
-    workouts.push(buildWorkout(input, (w) => scoreWithReference(w, DEFAULT_PROFILE, observed)));
+    const built = buildWorkout(input, (w) => scoreWithReference(w, DEFAULT_PROFILE, observed));
+    if (input.heartRateSeries) SERIES.set(built.id, input.heartRateSeries);
+    workouts.push(built);
   }
   return workouts;
 }
@@ -236,6 +244,25 @@ createServer(async (request, response) => {
     const page = rows.slice(0, limit);
     return json(200, { notifications: page.map(presentNotification), ...(rows.length > limit ? { next: page[page.length - 1]!.id } : {}) });
   }
+  if (url.pathname === "/api/workouts/heartrate") {
+    const id = url.searchParams.get("id") ?? "";
+    const w = ALL.find((x) => x.id === id);
+    const series = decodeSeries(SERIES.get(id));
+    if (!w || !series) return json(404, { error: "No heart-rate stream stored for this workout" });
+    return json(200, { id, startedAt: w.startedAt, ...series });
+  }
+  if (url.pathname === "/api/workouts/tags" && request.method === "POST") {
+    try {
+      let body = "";
+      for await (const chunk of request) body += chunk.toString();
+      const update = parseTagUpdate(JSON.parse(body));
+      if (update.tags.length) tags.set(update.workoutId, update.tags); else tags.delete(update.workoutId);
+      return json(200, { id: update.workoutId, tags: update.tags });
+    } catch (error) {
+      return json(400, { error: error instanceof Error ? error.message : "Invalid tags" });
+    }
+  }
+  if (url.pathname === "/api/workouts/tags") return json(200, { tags: Object.fromEntries(tags) });
   if (url.pathname === "/api/workouts") {
     return json(200, {
       from: range.from.toISOString(),

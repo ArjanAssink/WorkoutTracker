@@ -11,7 +11,7 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   names — resource group, Function App (Flex Consumption, westeurope), storage account —
   are **not in the repo**: they live in the gitignored `.env` as `WORKOUTS_URL`,
   `AZURE_RESOURCE_GROUP`, `AZURE_FUNCTION_APP`, `AZURE_STORAGE_ACCOUNT` (template:
-  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `notifications`, `recovery`, `routes`, `strava`, `settings`; blob
+  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `notifications`, `recovery`, `routes`, `strava`, `settings`, `heartrate`, `tags`; blob
   container `photos`. The signed-in `az` user owns
   the subscription.
 - **Data loaded**: ~3,180 workouts (Feb 2018 → now, Apple Health export + Health Auto
@@ -325,6 +325,11 @@ malformed envelope still returns 400. Keep that asymmetry.
   own too); zones are % of HR reserve against the row's `maxHeartRateReference`. Never store
   zone seconds — the reference moves on rescore. `/api/workouts` swaps the histogram for
   `heartRateZones`; rows written before 2026-11-24 need a re-import (`npm run sync`) to get one.
+- **Per-workout extras live beside the row, never on it.** `routeFile` and `heartRateSeries`
+  ride on `WorkoutInput` for the importer and `buildWorkout` strips both; the series goes to
+  the `heartrate` table, a GPX to `routes`. Tags (`tags` table, `domain/tags.ts`) are the
+  person's own writing: every import Replace-upserts the workout row, so anything stored on
+  it by hand would be erased.
 - **Body weight is not a workout.** Separate domain (`bodyWeight.ts`), separate table and
   repository, one row per local day, earliest reading wins. The export parser delivers it
   through the `onBodyMass` hook rather than a second pass over a 500 MB file. The weight

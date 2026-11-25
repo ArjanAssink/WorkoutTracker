@@ -13,7 +13,7 @@ import type { WorkoutInput } from "../domain/workout.js";
 import { announceMilestones } from "./notifyMilestones.js";
 import { invalidatePatterns } from "./patterns.js";
 import { recordPush } from "./ingestWatch.js";
-import { getBodyWeightRepository, getRecoveryRepository, getRepository, observedMaxResolver } from "./shared.js";
+import { getBodyWeightRepository, getHeartRateSeriesRepository, getRecoveryRepository, getRepository, observedMaxResolver } from "./shared.js";
 
 /**
  * Batch ingest for the Health Auto Export app, which is how workouts get here
@@ -115,9 +115,13 @@ export async function ingestHealthAutoExport(
     return serverError("Failed to read workout history");
   }
 
+  // The HR series rides on the input but lives in its own table; keyed by id once built.
+  const seriesById = new Map<string, string>();
   parsed.workouts.forEach((input, index) => {
     try {
-      ready.push(buildWorkout(input, (w) => scoreWithReference(w, settings.profile, observedMax(w))));
+      const built = buildWorkout(input, (w) => scoreWithReference(w, settings.profile, observedMax(w)));
+      if (input.heartRateSeries) seriesById.set(built.id, input.heartRateSeries);
+      ready.push(built);
     } catch (error) {
       if (error instanceof WorkoutValidationError) {
         rejected.push({ index, reason: error.message });
@@ -147,6 +151,7 @@ export async function ingestHealthAutoExport(
 
   try {
     const written = await repository.upsertMany(ready);
+    await storeSeries(ready, seriesById, context);
     if (written > 0 || recoveryWritten > 0 || weightsWritten > 0) invalidatePatterns();
     // Two automations share this endpoint: one sends workouts, the other the health metrics. Stamp whichever this was.
     if (parsed.workouts.length + parsed.skipped.length > 0) await recordPush("workouts", "Health Auto Export", context);
@@ -173,6 +178,20 @@ export async function ingestHealthAutoExport(
   } catch (error) {
     context.error("Failed to store Health Auto Export batch", error);
     return serverError("Failed to store workouts");
+  }
+}
+
+/** Best effort: the chart is a nicety, so a failure here is logged and never fails the batch. */
+async function storeSeries(workouts: Workout[], seriesById: Map<string, string>, context: InvocationContext): Promise<void> {
+  const records = workouts.flatMap((w) => {
+    const series = seriesById.get(w.id);
+    return series ? [{ workoutId: w.id, startedAt: w.startedAt, series }] : [];
+  });
+  if (!records.length) return;
+  try {
+    await (await getHeartRateSeriesRepository()).upsertMany(records);
+  } catch (error) {
+    context.warn("Could not store heart-rate series", error);
   }
 }
 

@@ -111,6 +111,7 @@ describe("measurement shapes the app actually sends", () => {
     expect(h.from).toBe(130);
     expect(h.seconds[0]).toBe(900);
     expect(h.seconds[30]).toBe(900);
+    expect(w.heartRateSeries).toMatch(/^5:130,/);
   });
 
   it("stores no histogram for an undated heart-rate series", () => {
