@@ -1,0 +1,27 @@
+# XcodeGen spec — generates WorkoutSync.xcodeproj (gitignored). Run `xcodegen` in ios/.
+# Team ID and bundle prefix come from Local.xcconfig (gitignored; copy the .example).
+name: WorkoutSync
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+targets:
+  WorkoutSync:
+    type: application
+    platform: iOS
+    sources: [WorkoutSync]
+    configFiles:
+      Debug: Local.xcconfig
+      Release: Local.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).workoutsync
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Workout Sync
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
