@@ -35,8 +35,8 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | `GET`/`POST` | `/api/notify/milestones` | What the week in progress has earned and what was already announced; `POST` sends what is due. |
 | `GET`/`POST` | `/api/notify/checkin` | Preview the Thursday check-in, or send it now. |
 | `GET`  | `/api/notify/stale` | When the phone last pushed data, and whether the three-day silence alert would fire. |
-| `GET`  | `/api/inbox`     | Every message the app has sent (weekly summary, check-ins, milestones, alerts), with whether it reached Telegram. `#<id>` opens one. |
-| `GET`  | `/api/notifications` | The same as data, newest first (`?limit=&after=`): composed `html`, portable `spans`, plain `text`, `title`, `link`, per-channel `deliveries`; `next` is the cursor. |
+| `GET`  | `/api/notifications` | The same as data, newest first (`?limit=&after=`): composed `html`, portable `spans`, plain `text`, `title`, `link`, per-channel `deliveries`; `unread` (capped at 100) against the shared `readThrough` marker; `next` is the cursor. Every page's header has a bell with that count, opening them in a panel (`?notifications`, or `?notification=<id>` for one). |
+| `POST` | `/api/notifications/read` | `{ "through": "<id>" }` — everything up to that one is read. The marker only moves forward. |
 | `GET`  | `/api/history`   | Every workout, filterable and sortable; click a row to open its detail: tags, pace, heart rate over the session, zones, effort against that activity's previous ten. `#<id>` opens one; the dashboard's recent list links there. |
 | `GET`  | `/api/workouts/heartrate?id=&startedAt=` | Heart rate over one workout (`stepSeconds`, `bpm[]` with `null` gaps); 404 when no stream was stored. |
 | `GET`/`POST` | `/api/workouts/tags` | Every workout's tags (`{ tags: { <id>: [...] } }`), or replace one workout's: `{ id, startedAt, tags }`; an empty list clears them. |

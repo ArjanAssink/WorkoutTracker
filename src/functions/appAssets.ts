@@ -14,6 +14,7 @@ export const assets: Record<string, string> = {
   "startup-v1-1290x2796.png": "image/png",
   "startup-v1-1320x2868.png": "image/png",
   "app-shell.js": "text/javascript; charset=utf-8",
+  "notifications.js": "text/javascript; charset=utf-8",
   "app-version.json": "application/json; charset=utf-8",
   "manifest.webmanifest": "application/manifest+json; charset=utf-8",
   "icon-v1-192.png": "image/png",
@@ -25,7 +26,7 @@ export const assets: Record<string, string> = {
 
 let versionPromise: Promise<string> | undefined;
 export function getAppVersion(): Promise<string> {
-  versionPromise ??= Promise.all(["index.html", "strength.html", "recovery.html", "map.html", "workouts.html", "notifications.html", "app-assets/app-shell.js", "app-assets/manifest.webmanifest"].map((name) => readFile(new URL(`../../../public/${name}`, import.meta.url))))
+  versionPromise ??= Promise.all(["index.html", "strength.html", "recovery.html", "map.html", "workouts.html", "app-assets/app-shell.js", "app-assets/notifications.js", "app-assets/manifest.webmanifest"].map((name) => readFile(new URL(`../../../public/${name}`, import.meta.url))))
     .then((files) => { const hash = createHash("sha256"); for (const file of files) hash.update(file); return hash.digest("hex").slice(0, 20); });
   return versionPromise;
 }

@@ -92,8 +92,8 @@ src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|Y
                 liftRepository (PK me|pr, me|repmax, me|tm|<program>, me|set),
                 milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
-public/         index.html (dashboard), workouts.html (/api/history), notifications.html (/api/inbox),
-                strength.html, recovery.html, map.html — standalone, no build
+public/         index.html (dashboard), workouts.html (/api/history), strength.html, recovery.html,
+                map.html; app-assets/notifications.js is the bell + panel every page loads — standalone, no build
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
 ```
 
@@ -379,6 +379,9 @@ malformed envelope still returns 400. Keep that asymmetry.
   before. The API serves each as `spans` (`domain/notifications.ts`, Telegram's HTML subset
   → styled runs) so a page or a native app renders it without parsing HTML. A push channel
   for the app is another `Delivery`, not another code path. Previews (GET) never store.
+  There is no notifications page: `public/app-assets/notifications.js` puts a bell with the
+  unread badge in every page's `header` and lists them in a panel. Read state is one marker
+  in `settings` (`notifications.readThrough`), only moving forward, shared by every device.
 - **Milestones are announced once per key per ISO week.** `announceMilestones` runs after
   every HTTP ingest and must never throw into the response; the Health Auto Export batch
   re-posts the same week daily, so without the `milestones` table every good week would be

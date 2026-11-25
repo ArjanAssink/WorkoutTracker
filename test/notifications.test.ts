@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { notificationId, plainText, presentNotification, titleOf, toSpans } from "../src/domain/notifications.js";
+import { advanceReadMarker, NOTIFICATION_ID, notificationId, plainText, presentNotification, titleOf, toSpans, unreadCount } from "../src/domain/notifications.js";
 
 describe("toSpans", () => {
   it("turns Telegram's HTML subset into styled runs", () => {
@@ -60,5 +60,27 @@ describe("presentNotification", () => {
     const out = presentNotification({ id: "1", kind: "checkin", title: "t", html: "<b>Hi</b> there", createdAt: "2026-11-26T17:00:00Z", link: "/api/dashboard", deliveries: [] });
     expect(out.spans).toEqual([{ text: "Hi", bold: true }, { text: " there" }]);
     expect(out.text).toBe("Hi there");
+  });
+});
+
+describe("read marker", () => {
+  const older = notificationId(new Date("2026-11-23T09:00:00Z"), "a");
+  const newer = notificationId(new Date("2026-11-26T17:00:00Z"), "b");
+
+  it("counts what is newer than the marker, everything when there is none", () => {
+    expect(unreadCount([newer, older], older)).toBe(1);
+    expect(unreadCount([newer, older], newer)).toBe(0);
+    expect(unreadCount([newer, older], undefined)).toBe(2);
+  });
+
+  it("only moves towards the present", () => {
+    expect(advanceReadMarker(undefined, older)).toBe(older);
+    expect(advanceReadMarker(older, newer)).toBe(newer);
+    expect(advanceReadMarker(newer, older)).toBe(newer);
+  });
+
+  it("accepts only real ids", () => {
+    expect(NOTIFICATION_ID.test(newer)).toBe(true);
+    expect(NOTIFICATION_ID.test("1' or 1 eq 1")).toBe(false);
   });
 });

@@ -27,7 +27,7 @@ import { weekRecovery } from "../src/domain/weekRecovery.js";
 import { parseWeekAnnotation, type WeekAnnotation } from "../src/domain/weekAnnotation.js";
 import { composeWeeklySummary } from "../src/domain/weeklySummary.js";
 import { composeCheckIn } from "../src/domain/milestones.js";
-import { notificationId, presentNotification, titleOf, NOTIFICATION_LINKS, type AppNotification, type NotificationKind } from "../src/domain/notifications.js";
+import { advanceReadMarker, NOTIFICATION_ID, notificationId, presentNotification, titleOf, unreadCount, NOTIFICATION_LINKS, type AppNotification, type NotificationKind } from "../src/domain/notifications.js";
 
 // Preview labels are deliberately temporary; the Function API persists real labels.
 const annotations = new Map<string, WeekAnnotation>();
@@ -165,6 +165,8 @@ const NOTIFICATIONS = (() => {
   add("stale", "📵 <b>No data for 3 days</b> from:\n• the <b>workout export</b> — last seen Sat 21 Nov, 08:12, 3 days ago\nThe automation has probably stopped running.", new Date(Date.now() - 2 * 86_400_000));
   return out.sort((a, b) => a.id.localeCompare(b.id));
 })();
+/** In memory, like the annotations: the three newest start unread so the badge has something to show. */
+let readThrough: string | undefined = NOTIFICATIONS[3]?.id;
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://localhost:${PORT}`);
@@ -185,7 +187,7 @@ createServer(async (request, response) => {
     return send(200, await readFile(PAGE, "utf8"), "text/html; charset=utf-8");
   }
   if (url.pathname === "/api/inbox") {
-    return send(200, await readFile(new URL("../../public/notifications.html", import.meta.url), "utf8"), "text/html; charset=utf-8");
+    response.writeHead(302, { location: "/api/dashboard?notifications" }); return response.end();
   }
   if (url.pathname === "/api/history") {
     return send(200, await readFile(new URL("../../public/workouts.html", import.meta.url), "utf8"), "text/html; charset=utf-8");
@@ -238,11 +240,22 @@ createServer(async (request, response) => {
       heartRateZoneModel: zoneModel(DEFAULT_PROFILE.restingHeartRate, observed ?? DEFAULT_PROFILE.maxHeartRate),
     });
   }
+  if (url.pathname === "/api/notifications/read" && request.method === "POST") {
+    let body = "";
+    for await (const chunk of request) body += chunk.toString();
+    const through = (JSON.parse(body || "{}") as { through?: string }).through;
+    if (!through || !NOTIFICATION_ID.test(through)) return json(400, { error: "'through' must be a notification id" });
+    readThrough = advanceReadMarker(readThrough, through);
+    return json(200, { readThrough, unread: unreadCount(NOTIFICATIONS.map((n) => n.id), readThrough) });
+  }
   if (url.pathname === "/api/notifications") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 100), after = url.searchParams.get("after");
     const rows = NOTIFICATIONS.filter((n) => !after || n.id > after).slice(0, limit + 1);
     const page = rows.slice(0, limit);
-    return json(200, { notifications: page.map(presentNotification), ...(rows.length > limit ? { next: page[page.length - 1]!.id } : {}) });
+    return json(200, {
+      unread: unreadCount(NOTIFICATIONS.map((n) => n.id), readThrough), ...(readThrough ? { readThrough } : {}),
+      notifications: page.map(presentNotification), ...(page.length && rows.length > limit ? { next: page[page.length - 1]!.id } : {}),
+    });
   }
   if (url.pathname === "/api/workouts/heartrate") {
     const id = url.searchParams.get("id") ?? "";

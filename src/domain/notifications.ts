@@ -149,3 +149,23 @@ export function presentNotification(n: AppNotification): AppNotification & { spa
   const spans = toSpans(n.html);
   return { ...n, spans, text: plainText(spans) };
 }
+
+/**
+ * Read state is one marker, not a flag per row: everything at or older than the newest
+ * notification the person has seen is read. Ids sort newest-first, so "newer" is "smaller".
+ * One marker is what a phone and a browser can share without a write per message.
+ */
+export function isNewer(id: string, than: string | undefined): boolean {
+  return than === undefined || id < than;
+}
+
+/** The marker only ever moves towards the present: opening an old page must not un-read newer ones. */
+export function advanceReadMarker(current: string | undefined, seen: string): string {
+  return current === undefined || seen < current ? seen : current;
+}
+
+export function unreadCount(ids: string[], readThrough: string | undefined): number {
+  return ids.filter((id) => isNewer(id, readThrough)).length;
+}
+
+export const NOTIFICATION_ID = /^\d{13}-[0-9a-f]{1,16}$/;
