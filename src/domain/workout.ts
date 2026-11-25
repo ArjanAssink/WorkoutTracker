@@ -53,6 +53,11 @@ export interface Workout {
 export type WorkoutInput = Omit<Workout, "id" | "effort" | "effortModel" | "recordedAt" | "maxHeartRateReference"> & {
   /** The export's GPX file for this workout (`workout-routes/route_….gpx`), when it has one. Never stored on the workout row. */
   routeFile?: string;
+  /**
+   * Heart rate over the session, `encodeSeries` output (`heartRateSeries.ts`). For the
+   * `heartrate` table, written beside the row by whoever stored it — never on the row itself.
+   */
+  heartRateSeries?: string;
 };
 
 /**
@@ -107,8 +112,10 @@ export function buildWorkout(
     );
   }
 
+  // Importer-only fields: they belong to other tables and must not reach the row.
+  const { routeFile: _routeFile, heartRateSeries: _series, ...stored } = input;
   const normalised: WorkoutInput = {
-    ...input,
+    ...stored,
     activityType: normaliseActivityType(input.activityType),
     startedAt: started.toISOString(),
     endedAt: ended.toISOString(),

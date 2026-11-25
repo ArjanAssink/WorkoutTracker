@@ -73,3 +73,11 @@ describe("buildWorkout", () => {
     expect(() => buildWorkout({ ...input, startedAt: "nope" }, score)).toThrow(WorkoutValidationError);
   });
 });
+
+describe("buildWorkout importer-only fields", () => {
+  it("keeps the route file and heart-rate series off the stored row", () => {
+    const w = buildWorkout({ ...input, routeFile: "route_x.gpx", heartRateSeries: "5:120,121" }, score);
+    expect("routeFile" in w).toBe(false);
+    expect("heartRateSeries" in w).toBe(false);
+  });
+});

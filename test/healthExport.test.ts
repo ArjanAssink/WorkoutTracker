@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseHealthExport, type ParseStats } from "../src/ingest/healthExport.js";
 import type { WorkoutInput } from "../src/domain/workout.js";
 import { decodeHistogram } from "../src/domain/heartRateZones.js";
+import { decodeSeries } from "../src/domain/heartRateSeries.js";
 
 async function parse(xml: string): Promise<{ workouts: WorkoutInput[]; stats: ParseStats }> {
   const stats: ParseStats = { workoutsSeen: 0, workoutsParsed: 0, skipped: [] };
@@ -152,6 +153,19 @@ describe("joining loose heart-rate samples to workouts without statistics", () =
     expect(h.seconds.reduce((a, b) => a + b, 0)).toBe(6000);
   });
 
+  it("records heart rate over the session from the same samples, for the detail chart", async () => {
+    const xml = `<HealthData>
+      ${samples("2024-01-08 19:00:00 +0100", 100, 2, 110)}
+      <Workout workoutActivityType="HKWorkoutActivityTypeMartialArts" duration="100" durationUnit="min" sourceName="Polar Flow"
+               startDate="2024-01-08 19:00:00 +0100" endDate="2024-01-08 20:40:00 +0100"/>
+    </HealthData>`;
+    const s = decodeSeries((await parse(xml)).workouts[0]!.heartRateSeries)!;
+    expect(s.stepSeconds).toBe(10); // 100 minutes in at most 720 steps
+    expect(s.bpm).toHaveLength(600);
+    // Readings every 30 s are carried across the 10 s steps between them: no gaps.
+    expect(s.bpm.every((v) => v !== null && v >= 110 && v <= 129)).toBe(true);
+  });
+
   it("records the histogram for Apple's own workouts too, which carry statistics", async () => {
     const xml = `<HealthData>
       ${samples("2024-01-08 19:00:00 +0100", 60, 12, 150)}
@@ -168,6 +182,7 @@ describe("joining loose heart-rate samples to workouts without statistics", () =
   it("stores no histogram when the samples are a glance, not a recording", async () => {
     const w = (await parse(MODERN)).workouts[0]!;
     expect(w.heartRateHistogram).toBeUndefined();
+    expect(w.heartRateSeries).toBeUndefined();
   });
 
   it("leaves a workout's own statistics alone when it has them", async () => {

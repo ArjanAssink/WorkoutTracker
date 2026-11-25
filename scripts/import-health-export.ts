@@ -27,6 +27,8 @@ import { dailyWeights, type WeightReading } from "../src/domain/bodyWeight.js";
 import { RecoveryRepository } from "../src/storage/recoveryRepository.js";
 import { dailyRecovery, type RecoverySample } from "../src/domain/recovery.js";
 import { RouteRepository } from "../src/storage/routeRepository.js";
+import { HeartRateSeriesRepository } from "../src/storage/heartRateSeriesRepository.js";
+import type { HeartRateSeriesRecord } from "../src/domain/heartRateSeries.js";
 import { parseGpxTrack } from "../src/ingest/gpx.js";
 import { buildRouteRecord, type PrivacyZone, type RouteRecord } from "../src/domain/routes.js";
 import { dirname, join } from "node:path";
@@ -75,6 +77,10 @@ async function main(): Promise<void> {
   await routeRepo?.ensureTable();
   let routeBatch: RouteRecord[] = [];
   let routesSeen = 0, routesMissing = 0, routesWritten = 0;
+  const seriesRepo = target ? HeartRateSeriesRepository.fromConnectionString(target.storageConnectionString, target.userId) : undefined;
+  await seriesRepo?.ensureTable();
+  let seriesBatch: HeartRateSeriesRecord[] = [];
+  let seriesWritten = 0;
   let batch: Workout[] = [];
   let written = 0;
   let filtered = 0;
@@ -123,6 +129,10 @@ async function main(): Promise<void> {
       throw error;
     }
     batch.push(workout);
+    if (input.heartRateSeries) {
+      seriesBatch.push({ workoutId: workout.id, startedAt: workout.startedAt, series: input.heartRateSeries });
+      if (seriesBatch.length >= BATCH_SIZE) { seriesWritten += await flushSeries(seriesRepo, seriesBatch); seriesBatch = []; }
+    }
     if (haveRoutes && input.routeFile) {
       try {
         const route = buildRouteRecord(workout, parseGpxTrack(readFileSync(join(routesDir, input.routeFile), "utf8")), "health-export", new Date(), privacy);
@@ -135,12 +145,13 @@ async function main(): Promise<void> {
     }
     if (batch.length >= BATCH_SIZE) {
       written += await flush(repository, batch);
-  routesWritten += await flushRoutes(routeRepo, routeBatch);
       batch = [];
       process.stdout.write(`\r  imported ${written}...`);
     }
   }
   written += await flush(repository, batch);
+  seriesWritten += await flushSeries(seriesRepo, seriesBatch);
+  routesWritten += await flushRoutes(routeRepo, routeBatch);
 
   // Body weight: one row per day, earliest reading wins. Same storage account.
   const weights = dailyWeights(readings, "health-export").filter((w) => !since || w.date >= since.toISOString().slice(0, 10));
@@ -166,6 +177,7 @@ async function main(): Promise<void> {
   } else {
     console.log(`Routes             : no workout-routes folder at ${routesDir} (pass --routes)`);
   }
+  console.log(`Heart-rate series  : ${seriesWritten} workouts${values["dry-run"] ? " (would write)" : " written"}`);
   if (recoverySamples.length) {
     const nights = recoveryDays.filter((d) => d.sleepAsleepSeconds !== undefined).length;
     console.log(`Recovery records   : ${recoverySamples.length} → ${recoveryDays.length} days, ${nights} nights${values["dry-run"] ? " (would write)" : ` (${recoveryWritten} written)`}`);
@@ -214,4 +226,10 @@ function parsePrivacy(raw: string | undefined): PrivacyZone | undefined {
   const [lat, lon, m] = raw.split(",").map((x) => Number(x.trim()));
   if (![lat, lon, m].every(Number.isFinite) || m! <= 0) throw new Error(`ROUTE_PRIVACY_ZONE must be lat,lon,metres — got ${raw}`);
   return { lat: lat!, lon: lon!, radiusMeters: m! };
+}
+
+async function flushSeries(repository: HeartRateSeriesRepository | undefined, batch: HeartRateSeriesRecord[]): Promise<number> {
+  if (batch.length === 0) return 0;
+  if (!repository) return batch.length;
+  return repository.upsertMany(batch);
 }

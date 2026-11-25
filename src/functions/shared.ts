@@ -7,6 +7,8 @@ import { LiftRepository } from "../storage/liftRepository.js";
 import { MilestoneRepository } from "../storage/milestoneRepository.js";
 import { RecoveryRepository } from "../storage/recoveryRepository.js";
 import { RouteRepository } from "../storage/routeRepository.js";
+import { HeartRateSeriesRepository } from "../storage/heartRateSeriesRepository.js";
+import { TagRepository } from "../storage/tagRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
 import { StravaRepository } from "../storage/stravaRepository.js";
 import { PhotoStore } from "../storage/photoStore.js";
@@ -145,4 +147,28 @@ export function getPhotoStore(): Promise<PhotoStore> {
     return store;
   })();
   return photoStorePromise;
+}
+
+let seriesPromise: Promise<HeartRateSeriesRepository> | undefined;
+
+export function getHeartRateSeriesRepository(): Promise<HeartRateSeriesRepository> {
+  seriesPromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = HeartRateSeriesRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return seriesPromise;
+}
+
+let tagPromise: Promise<TagRepository> | undefined;
+
+export function getTagRepository(): Promise<TagRepository> {
+  tagPromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = TagRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return tagPromise;
 }

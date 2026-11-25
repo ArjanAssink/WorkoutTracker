@@ -6,6 +6,7 @@ import { parseAppleDate } from "./shortcutPayload.js";
 import type { NightSummary, RecoveryMetric, RecoverySample } from "../domain/recovery.js";
 import { toKcal, toMeters } from "./units.js";
 import { buildHistogram, encodeHistogram, type HeartRateSample } from "../domain/heartRateZones.js";
+import { buildSeries, encodeSeries } from "../domain/heartRateSeries.js";
 
 /**
  * Health Auto Export (healthyapps.dev) posts batches of workouts to a REST endpoint on a
@@ -225,7 +226,9 @@ function parseOne(entry: unknown): WorkoutInput {
 
   const activeEnergy = measure(w.activeEnergyBurned ?? w.activeEnergy, toKcal, "kcal", "sum");
   const end = endedAt ?? new Date(startedAt.getTime() + durationSeconds * 1000);
-  const histogram = buildHistogram(timedHeartRate(w.heartRateData ?? w.heartRate), startedAt.getTime(), end.getTime());
+  const stream = timedHeartRate(w.heartRateData ?? w.heartRate);
+  const histogram = buildHistogram(stream, startedAt.getTime(), end.getTime());
+  const series = buildSeries(stream, startedAt.getTime(), end.getTime());
   const totalEnergy = measure(w.totalEnergyBurned ?? w.totalEnergy, toKcal, "kcal", "sum");
 
   return {
@@ -236,6 +239,7 @@ function parseOne(entry: unknown): WorkoutInput {
     source: "health-export",
     sourceName: "Health Auto Export",
     ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}),
+    ...(series ? { heartRateSeries: encodeSeries(series) } : {}),
     ...set("distanceMeters", measure(w.distance, toMeters, "m", "sum")),
     ...set("activeEnergyKcal", activeEnergy),
     ...set("totalEnergyKcal", totalEnergy),
