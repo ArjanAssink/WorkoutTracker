@@ -2,7 +2,7 @@ import { app, type HttpRequest, type HttpResponseInit, type InvocationContext, t
 import { config } from "../config/index.js";
 import { isAuthorised } from "../http/auth.js";
 import { ok, unauthorised } from "../http/responses.js";
-import { sendTelegram } from "./notifyWeekly.js";
+import { notify } from "./notifications.js";
 import { getSettingsRepository } from "./shared.js";
 
 /**
@@ -60,9 +60,9 @@ export async function staleTimer(_timer: Timer, context: InvocationContext): Pro
   const quiet = s.pushes.filter((p) => p.stale);
   const names: Record<PushKind, string> = { workouts: "workout export", metrics: "health-metrics export (sleep, heart rate, steps)" };
   const lines = quiet.map((p) => `• the <b>${names[p.kind]}</b> — last seen ${when(p.lastPush!.at)}, ${Math.floor(p.daysSince!)} days ago`);
-  await sendTelegram(
-    `📵 <b>No data for ${Math.floor(Math.max(...quiet.map((p) => p.daysSince!)))} days</b> from:\n${lines.join("\n")}\nThe automation has probably stopped running: open the shortcut on the phone and run it once; if it fails, check the automation is still enabled.`,
-    context, "Stale-data alert",
+  await notify(
+    { kind: "stale", html: `📵 <b>No data for ${Math.floor(Math.max(...quiet.map((p) => p.daysSince!)))} days</b> from:\n${lines.join("\n")}\nThe automation has probably stopped running: open the shortcut on the phone and run it once; if it fails, check the automation is still enabled.`, meta: { kinds: quiet.map((p) => p.kind) } },
+    context, "Stale-data alert", now,
   );
   await (await getSettingsRepository()).set(ALERTED_KEY, now.toISOString());
 }

@@ -11,7 +11,7 @@ conversation: **everything below was true on 2026-10-11** — verify before rely
   names — resource group, Function App (Flex Consumption, westeurope), storage account —
   are **not in the repo**: they live in the gitignored `.env` as `WORKOUTS_URL`,
   `AZURE_RESOURCE_GROUP`, `AZURE_FUNCTION_APP`, `AZURE_STORAGE_ACCOUNT` (template:
-  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `recovery`, `routes`, `strava`, `settings`; blob
+  `.env.example`). Tables `workouts`, `bodyweight`, `lifts`, `milestones`, `notifications`, `recovery`, `routes`, `strava`, `settings`; blob
   container `photos`. The signed-in `az` user owns
   the subscription.
 - **Data loaded**: ~3,180 workouts (Feb 2018 → now, Apple Health export + Health Auto
@@ -92,8 +92,8 @@ src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|Y
                 liftRepository (PK me|pr, me|repmax, me|tm|<program>, me|set),
                 milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
-public/         index.html (dashboard), workouts.html (/api/history), strength.html, recovery.html,
-                map.html — standalone, no build
+public/         index.html (dashboard), workouts.html (/api/history), notifications.html (/api/inbox),
+                strength.html, recovery.html, map.html — standalone, no build
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
 ```
 
@@ -367,6 +367,13 @@ malformed envelope still returns 400. Keep that asymmetry.
   `ingest.lastPush.metrics` in `settings`; a 07:30 UTC timer alerts on Telegram when either
   has been silent three days, re-alerting every three days. New write paths must call
   `recordPush(kind, source)`.
+- **Every outbound message goes through `notify()`** (`functions/notifications.ts`), never
+  straight to Telegram. It delivers to each configured channel, then stores one row in
+  `notifications` (single partition, RowKey counts down in time so a scan is newest-first)
+  with a `Delivery` per channel — failures included, then rethrown so callers behave as
+  before. The API serves each as `spans` (`domain/notifications.ts`, Telegram's HTML subset
+  → styled runs) so a page or a native app renders it without parsing HTML. A push channel
+  for the app is another `Delivery`, not another code path. Previews (GET) never store.
 - **Milestones are announced once per key per ISO week.** `announceMilestones` runs after
   every HTTP ingest and must never throw into the response; the Health Auto Export batch
   re-posts the same week daily, so without the `milestones` table every good week would be

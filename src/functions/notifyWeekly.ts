@@ -6,10 +6,11 @@ import { composeWeeklySummary, restWeekFocus } from "../domain/weeklySummary.js"
 import { isAuthorised } from "../http/auth.js";
 import { json, ok, unauthorised } from "../http/responses.js";
 import { resolveWindow } from "./getWeekly.js";
+import { notify } from "./notifications.js";
 import { getRepository, getSettingsRepository } from "./shared.js";
 
 /**
- * The Monday-morning summary, delivered to Telegram.
+ * The Monday-morning summary, delivered to Telegram and kept as a notification.
  *
  * Two entry points share one implementation: a timer for the real schedule, and an
  * authenticated HTTP endpoint so the message can be previewed or sent on demand without
@@ -43,29 +44,6 @@ export async function buildSummary(now: Date): Promise<{ text: string; weekStart
   return { text, weekStart: report.current?.weekStart };
 }
 
-export async function sendTelegram(text: string, context: InvocationContext, what = "Weekly summary"): Promise<void> {
-  const { telegram } = config();
-  if (!telegram) throw new Error("Telegram is not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID");
-
-  const response = await fetch(`https://api.telegram.org/bot${telegram.botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      chat_id: telegram.chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    }),
-  });
-  if (!response.ok) {
-    // Telegram's error body says what is wrong (bad chat id, HTML parse error…); the
-    // token is in the URL, never in the message, so this is safe to log.
-    const body = await response.text().catch(() => "");
-    throw new Error(`Telegram responded ${response.status}: ${body.slice(0, 300)}`);
-  }
-  context.log(`${what} sent to Telegram`);
-}
-
 /**
  * Timer. Linux Flex Consumption does not honour WEBSITE_TIME_ZONE, so the schedule is in
  * UTC and fires at both 08:00 and 09:00 on Mondays; the handler then sends only when it is
@@ -84,8 +62,8 @@ export async function weeklyTimer(timer: Timer, context: InvocationContext): Pro
     context.warn("Weekly summary not sent: Telegram is not configured");
     return;
   }
-  const { text } = await buildSummary(now);
-  await sendTelegram(text, context);
+  const { text, weekStart } = await buildSummary(now);
+  await notify({ kind: "weekly", html: text, ...(weekStart ? { meta: { weekStart } } : {}) }, context, "Weekly summary", now);
 }
 
 /**
@@ -111,8 +89,8 @@ export async function weeklyHttp(request: HttpRequest, context: InvocationContex
     return json(503, { error: "Telegram is not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID" });
   }
   try {
-    await sendTelegram(text, context);
-    return ok({ sent: true, weekStart });
+    const sent = await notify({ kind: "weekly", html: text, ...(weekStart ? { meta: { weekStart } } : {}) }, context, "Weekly summary");
+    return ok({ sent: true, weekStart, notificationId: sent.id });
   } catch (error) {
     context.error("Failed to send weekly summary", error);
     return json(502, { error: error instanceof Error ? error.message : "Failed to send" });

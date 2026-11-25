@@ -5,6 +5,7 @@ import { WorkoutRepository } from "../storage/workoutRepository.js";
 import { BodyWeightRepository } from "../storage/bodyWeightRepository.js";
 import { LiftRepository } from "../storage/liftRepository.js";
 import { MilestoneRepository } from "../storage/milestoneRepository.js";
+import { NotificationRepository } from "../storage/notificationRepository.js";
 import { RecoveryRepository } from "../storage/recoveryRepository.js";
 import { RouteRepository } from "../storage/routeRepository.js";
 import { SettingsRepository } from "../storage/settingsRepository.js";
@@ -85,6 +86,18 @@ export function getMilestoneRepository(): Promise<MilestoneRepository> {
     return repository;
   })();
   return milestonePromise;
+}
+
+let notificationPromise: Promise<NotificationRepository> | undefined;
+
+export function getNotificationRepository(): Promise<NotificationRepository> {
+  notificationPromise ??= (async () => {
+    const { storageConnectionString, userId } = config();
+    const repository = NotificationRepository.fromConnectionString(storageConnectionString, userId);
+    await repository.ensureTable();
+    return repository;
+  })();
+  return notificationPromise;
 }
 
 let recoveryPromise: Promise<RecoveryRepository> | undefined;

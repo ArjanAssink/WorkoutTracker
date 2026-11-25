@@ -8,7 +8,7 @@ import { startOfIsoWeek } from "../domain/summary.js";
 import type { Workout } from "../domain/workout.js";
 import { isAuthorised } from "../http/auth.js";
 import { json, ok, unauthorised } from "../http/responses.js";
-import { sendTelegram } from "./notifyWeekly.js";
+import { notify } from "./notifications.js";
 import { getMilestoneRepository, getRepository, getSettingsRepository } from "./shared.js";
 
 /**
@@ -73,7 +73,8 @@ export async function announceMilestones(arrived: Workout[], context: Invocation
     const result = await evaluateMilestones(arrived, now);
     if (result.due.length === 0) return;
     if (!config().telegram) { context.log(`Milestones earned but Telegram is not configured: ${result.due.map((m) => m.key).join(", ")}`); return; }
-    await sendTelegram(result.due.map((m) => m.text).join("\n\n"), context, `Milestones (${result.due.map((m) => m.key).join(", ")})`);
+    const keys = result.due.map((m) => m.key);
+    await notify({ kind: "milestones", html: result.due.map((m) => m.text).join("\n\n"), meta: { weekStart: result.weekStart, keys } }, context, `Milestones (${keys.join(", ")})`, now);
     await (await getMilestoneRepository()).markSent(result.weekStart, result.toMark, now.toISOString());
   } catch (error) {
     context.error("Milestone check failed", error);
@@ -125,9 +126,9 @@ export async function checkInTimer(timer: Timer, context: InvocationContext): Pr
   const localHour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: TIMEZONE }).format(now));
   if (localHour !== CHECKIN_HOUR_LOCAL && !timer.isPastDue) { context.log(`Skipping check-in: ${localHour}:00 in ${TIMEZONE}`); return; }
   if (!config().telegram) { context.warn("Check-in not sent: Telegram is not configured"); return; }
-  const { text } = await buildCheckIn(now);
+  const { text, weekStart } = await buildCheckIn(now);
   if (!text) { context.log("Check-in skipped: the week is already perfect"); return; }
-  await sendTelegram(text, context, "Check-in");
+  await notify({ kind: "checkin", html: text, meta: { weekStart } }, context, "Check-in", now);
 }
 
 /**
@@ -147,8 +148,8 @@ export async function checkInHttp(request: HttpRequest, context: InvocationConte
   if (!settings.telegram) return json(503, { error: "Telegram is not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID" });
   if (!text) return ok({ sent: false, weekStart, reason: "week already perfect" });
   try {
-    await sendTelegram(text, context, "Check-in");
-    return ok({ sent: true, weekStart });
+    const sent = await notify({ kind: "checkin", html: text, meta: { weekStart } }, context, "Check-in");
+    return ok({ sent: true, weekStart, notificationId: sent.id });
   } catch (error) {
     context.error("Failed to send check-in", error);
     return json(502, { error: error instanceof Error ? error.message : "Failed to send" });

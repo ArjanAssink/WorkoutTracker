@@ -23,6 +23,9 @@ import { resolveWindow } from "../src/functions/getWeekly.js";
 import { assets, getAppVersion } from "../src/functions/appAssets.js";
 import { weekRecovery } from "../src/domain/weekRecovery.js";
 import { parseWeekAnnotation, type WeekAnnotation } from "../src/domain/weekAnnotation.js";
+import { composeWeeklySummary } from "../src/domain/weeklySummary.js";
+import { composeCheckIn } from "../src/domain/milestones.js";
+import { notificationId, presentNotification, titleOf, NOTIFICATION_LINKS, type AppNotification, type NotificationKind } from "../src/domain/notifications.js";
 
 // Preview labels are deliberately temporary; the Function API persists real labels.
 const annotations = new Map<string, WeekAnnotation>();
@@ -127,6 +130,34 @@ const WEIGHTS = (() => {
   return out;
 })();
 
+/** What the notifications table would hold: the real composers over the synthetic weeks, plus a failure. */
+const NOTIFICATIONS = (() => {
+  const out: AppNotification[] = [];
+  const add = (kind: NotificationKind, html: string, at: Date, failed = false) => out.push({
+    id: notificationId(at, Math.floor(at.getTime() / 1000 % 1e8).toString(16)), kind, title: titleOf(html), html, createdAt: at.toISOString(), link: NOTIFICATION_LINKS[kind],
+    deliveries: [failed
+      ? { channel: "telegram", status: "failed", at: at.toISOString(), error: "Telegram responded 400: Bad Request: can't parse entities" }
+      : { channel: "telegram", status: "sent", at: at.toISOString() }],
+  });
+  for (let back = 6; back >= 0; back--) {
+    const monday = resolveWindow(null, 1, new Date(Date.now() - back * 7 * 86_400_000)).to!;
+    const { from, to } = resolveWindow(null, 12, new Date(monday.getTime() + 3600_000));
+    const leadIn = new Date(from!.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
+    const inWindow = ALL.filter((w) => { const t = new Date(w.startedAt); return t >= leadIn && t < to; });
+    const report = reviewWeeks(inWindow, DEFAULT_GOALS, from!, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+    add("weekly", composeWeeklySummary(report), new Date(monday.getTime() + 9 * 3600_000), back === 4);
+    const thursday = new Date(monday.getTime() + (3 * 24 + 17) * 3600_000);
+    if (thursday.getTime() < Date.now()) {
+      const weekReport = reviewWeeks(ALL.filter((w) => w.startedAt < thursday.toISOString()), DEFAULT_GOALS, monday, new Date(monday.getTime() + 7 * 86_400_000));
+      const text = weekReport.current && composeCheckIn(weekReport.current, DEFAULT_GOALS, thursday, "Europe/Amsterdam");
+      if (text) add("checkin", text, thursday);
+    }
+    if (back === 2) add("milestones", "🏆 <b>Good week secured</b>\nFive sessions by Friday — anything else is extra.", new Date(monday.getTime() + (4 * 24 + 8) * 3600_000));
+  }
+  add("stale", "📵 <b>No data for 3 days</b> from:\n• the <b>workout export</b> — last seen Sat 21 Nov, 08:12, 3 days ago\nThe automation has probably stopped running.", new Date(Date.now() - 2 * 86_400_000));
+  return out.sort((a, b) => a.id.localeCompare(b.id));
+})();
+
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://localhost:${PORT}`);
 
@@ -144,6 +175,9 @@ createServer(async (request, response) => {
 
   if (url.pathname === "/" || url.pathname === "/api/dashboard") {
     return send(200, await readFile(PAGE, "utf8"), "text/html; charset=utf-8");
+  }
+  if (url.pathname === "/api/inbox") {
+    return send(200, await readFile(new URL("../../public/notifications.html", import.meta.url), "utf8"), "text/html; charset=utf-8");
   }
   if (url.pathname === "/api/history") {
     return send(200, await readFile(new URL("../../public/workouts.html", import.meta.url), "utf8"), "text/html; charset=utf-8");
@@ -195,6 +229,12 @@ createServer(async (request, response) => {
       referenceMaxHeartRate: { bpm: observed ?? 185, observed: observed !== undefined },
       heartRateZoneModel: zoneModel(DEFAULT_PROFILE.restingHeartRate, observed ?? DEFAULT_PROFILE.maxHeartRate),
     });
+  }
+  if (url.pathname === "/api/notifications") {
+    const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 100), after = url.searchParams.get("after");
+    const rows = NOTIFICATIONS.filter((n) => !after || n.id > after).slice(0, limit + 1);
+    const page = rows.slice(0, limit);
+    return json(200, { notifications: page.map(presentNotification), ...(rows.length > limit ? { next: page[page.length - 1]!.id } : {}) });
   }
   if (url.pathname === "/api/workouts") {
     return json(200, {
