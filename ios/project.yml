@@ -10,6 +10,11 @@ targets:
     type: application
     platform: iOS
     sources: [WorkoutSync]
+    entitlements:
+      path: WorkoutSync/WorkoutSync.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
     configFiles:
       Debug: Local.xcconfig
       Release: Local.xcconfig
@@ -20,8 +25,10 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Workout Sync
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSHealthShareUsageDescription: Reads your workouts and their heart rate so they can be sent to your own workout tracker.
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: This app does not write to Health.
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.1"
-        CURRENT_PROJECT_VERSION: "1"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"

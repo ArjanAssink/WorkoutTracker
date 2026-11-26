@@ -32,20 +32,23 @@ and in the app's Keychain.
 
 ## MVP
 
-### 1. Mac and phone setup (you)
+### 1. Mac and phone setup (you) — ✅ done 2026-11-26
 - Xcode from the App Store. Open it once and let it install its components.
 - Xcode → Settings → Accounts → add your Apple ID. A "Personal Team" appears.
 - `brew install xcodegen`
 - iPhone: plug in, trust the Mac, then Settings → Privacy & Security → **Developer Mode** on (the phone restarts).
 - *Done when:* Xcode lists the phone as a run destination.
 
-### 2. Empty app on the phone (Claude writes it, you run it)
+### 2. Empty app on the phone (Claude writes it, you run it) — ✅ done 2026-11-26
 - `ios/project.yml`, `ios/Local.xcconfig.example`, a SwiftUI app that shows one line of text,
   `.gitignore` entries for `ios/*.xcodeproj`, `ios/Local.xcconfig`, `DerivedData`.
 - You: copy `Local.xcconfig.example` → `Local.xcconfig`, fill in team ID and a bundle prefix,
   `cd ios && xcodegen && open WorkoutSync.xcodeproj`, then Run on the phone.
 - First launch: Settings → General → VPN & Device Management → trust your developer certificate.
 - *Done when:* the app opens on the phone. This proves signing before any HealthKit code exists.
+- Result: works on the free personal team. Pairing needs a cable once; Developer Mode only
+  appears in Settings after Xcode has seen the phone; Xcode must finish downloading the iOS
+  platform before it can prepare the device.
 
 ### 3. HealthKit permission and a read-only list
 - HealthKit capability and entitlement, `NSHealthShareUsageDescription`, a request for read access to
