@@ -3,10 +3,17 @@ import SwiftUI
 /// Health permission and the last 10 workouts, read-only. Tap one for the JSON it would send.
 struct ContentView: View {
     @StateObject private var health = HealthStore()
+    @StateObject private var settings = Settings()
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
             List {
+                if !settings.isConfigured {
+                    Section {
+                        Button("Set the server and API key") { showingSettings = true }
+                    }
+                }
                 if let message = health.message {
                     Section { Text(message).foregroundStyle(.secondary) }
                 }
@@ -25,8 +32,15 @@ struct ContentView: View {
             }
             .navigationTitle("Workout Sync")
             .toolbar {
-                if health.loading { ProgressView() }
+                ToolbarItem(placement: .topBarLeading) {
+                    if health.loading { ProgressView() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Settings")
+                }
             }
+            .sheet(isPresented: $showingSettings) { SettingsView(settings: settings) }
             .refreshable { await health.requestAccessAndLoad() }
             .task { await health.requestAccessAndLoad() }
         }

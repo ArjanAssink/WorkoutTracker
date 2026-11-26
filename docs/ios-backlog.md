@@ -56,7 +56,7 @@ and in the app's Keychain.
 - The screen lists the last 10 workouts (type, start, duration, avg HR).
 - *Done when:* the list matches the Health app for those 10.
 
-### 4. Workout → payload mapping, with an identity test
+### 4. Workout → payload mapping, with an identity test — ✅ done 2026-11-26
 - Map `HKWorkout` to the HAE workout shape the parser already accepts (`name`, `start`, `end`,
   `duration`, `distance`, `activeEnergyBurned`, `avgHeartRate`, `maxHeartRate`).
 - **Identity is the trap.** Ids are `sha256(activityType|startedAt|roundedDuration)`, so the app
@@ -70,14 +70,17 @@ and in the app's Keychain.
 - Status (2026-11-26): `test/nativeAppParity.test.ts` passes. The HAE parser now applies
   `relabelActivity` with the payload's `sourceName`, as the export does; before this, a Strava "Other"
   class or a "Wrestling" entry via HAE got a different slug from the export. The app shows each
-  workout's JSON (tap a row). Still inferred: that `DateFormatter` truncates sub-second starts the
-  way the export does. The live check below settles it.
+  workout's JSON (tap a row).
+- Verified on the phone (2026-11-26): a strength session's payload (start in whole seconds,
+  duration 2751.04 s) derives exactly the id of the row already stored for it. The actual post
+  happens in item 6.
 - *Done when:* the test passes, and one real workout posted from the app shows up as the *same*
   row the export already stored, not a second one.
 
-### 5. Settings: base URL and API key
+### 5. Settings: base URL and API key — written, awaiting phone test
 - Two fields, stored in the Keychain, never in the repo or `UserDefaults`.
-- A "Test connection" button: `GET /api/health`, then an authenticated request that reads.
+- A "Test connection" button: `GET /api/health`, then an authenticated `GET /api/workouts?limit=1`.
+- Keychain item is `AfterFirstUnlockThisDeviceOnly` so item 7's background sync can read it while locked.
 - *Done when:* a wrong key shows an error and the right key shows OK.
 
 ### 6. "Sync now"

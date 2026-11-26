@@ -15,8 +15,13 @@ In Xcode pick your iPhone as the run destination and press Run (⌘R). The first
 needs the phone to trust the certificate: Settings → General → VPN & Device Management →
 your Apple ID → Trust.
 
-Re-run `xcodegen` after pulling changes to `project.yml` or adding files; the
-`.xcodeproj` is generated and gitignored.
+**After every `git pull`:** close the project in Xcode, run `xcodegen`, reopen. The
+`.xcodeproj` is generated and gitignored and only lists the files that existed when it was
+generated — a new Swift file shows up as "Cannot find 'X' in scope" until you regenerate.
+
+The console fills with iOS system noise (`Client not entitled`, `cannot add handler`…);
+ignore it. "Debug session ended with code 9: killed" means the app was stopped from outside
+(swiped away, re-run, Health permission changed), not that it crashed.
 
 ## Every 7 days (free account)
 
