@@ -41,6 +41,9 @@ struct SyncView: View {
                         if let result = sync.lastResult {
                             Text(result).foregroundStyle(.secondary)
                         }
+                        NavigationLink("Check against the server") {
+                            SyncCheckView(settings: settings)
+                        }
                         if let when = sync.lastSuccess {
                             Text("Last successful sync \(when.formatted(.relative(presentation: .named)))")
                                 .font(.footnote)
