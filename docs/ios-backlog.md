@@ -84,7 +84,7 @@ and in the app's Keychain.
 - Keychain item is `AfterFirstUnlockThisDeviceOnly` so item 7's background sync can read it while locked.
 - *Done when:* a wrong key shows an error and the right key shows OK.
 
-### 6. "Sync now" — written, awaiting phone test
+### 6. "Sync now" — ✅ done 2026-11-26
 - `HKAnchoredObjectQuery` for workouts. Save the anchor **only after a 2xx** so a failed post retries.
 - First run: limit to the last 30 days so the first post isn't the whole history (the export
   already has it).
@@ -92,14 +92,20 @@ and in the app's Keychain.
 - Prerequisite: item 4's relabel fix (`healthAutoExport.ts`) merged to `main` and deployed, or a
   Strava BJJ class posted by the app gets a second row under `other`.
 - "Re-send the last 30 days" forgets the anchor; harmless, because the backend upserts by id.
+- Verified: relabel fix deployed first (run 96, `7ebcb3a`). The first sync sent 17 workouts; the
+  table holds exactly 17 rows for those 30 days, all rewritten at the sync time, no doubles.
 - *Done when:* finishing a workout and tapping Sync puts it on the dashboard, and a second tap
   posts nothing new.
 
-### 7. Background sync (the actual point)
+### 7. Background sync (the actual point) — written, awaiting phone test
 - `HKObserverQuery` on workouts plus `enableBackgroundDelivery(.immediate)`, registered at launch.
   The handler runs the same anchored sync, then calls the completion handler.
 - Background delivery entitlement. **If the free team refuses it, record that here.** Then the MVP
   falls back to "open the app to sync", and the case for the paid account gets stronger.
+- Also syncs whenever the app comes to the foreground ("On open"), to catch up on a wake that
+  happened while the phone was locked. HealthKit is unreadable while locked, so such a wake fails and
+  leaves the anchor in place. Results are labelled "Background sync: …" / "On open sync: …"; a wake
+  with nothing new leaves the last result on screen.
 - *Done when:* a workout finished with the app closed reaches the dashboard without opening the
   app. Test with the phone locked.
 

@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import UIKit
 
 /// Sends new workouts to the backend. Backlog item 6.
 ///
@@ -28,9 +29,48 @@ final class SyncEngine: ObservableObject {
         lastResult = defaults.string(forKey: Self.lastResultKey)
     }
 
+    /// Backlog item 7. Registers for HealthKit background delivery: iOS wakes the app when a
+    /// workout is saved — even after the app was swiped away — and runs the observer.
+    /// Must be called at every launch, background launches included, before anything else.
+    /// The observer also fires once right after registering, which doubles as a launch sync.
+    func startObserving() {
+        let type = HKObjectType.workoutType()
+        let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
+            Task { @MainActor in
+                if let error {
+                    self?.record("Background observer error: \(error.localizedDescription)")
+                } else {
+                    await self?.syncInBackground()
+                }
+                // Always call it: HealthKit backs off delivery for apps that don't.
+                completion()
+            }
+        }
+        store.execute(query)
+        store.enableBackgroundDelivery(for: type, frequency: .immediate) { [weak self] ok, error in
+            guard !ok else { return }
+            Task { @MainActor in
+                self?.record("Background delivery unavailable: \(error?.localizedDescription ?? "unknown")")
+            }
+        }
+    }
+
+    /// Asks iOS for extra time so a post started in the background can finish.
+    private func syncInBackground() async {
+        let app = UIApplication.shared
+        var task: UIBackgroundTaskIdentifier = .invalid
+        task = app.beginBackgroundTask(withName: "workout-sync") {
+            app.endBackgroundTask(task)
+            task = .invalid
+        }
+        let inForeground = app.applicationState == .active
+        await sync(trigger: inForeground ? "On open" : "Background")
+        if task != .invalid { app.endBackgroundTask(task) }
+    }
+
     /// Returns true when everything new was delivered (or there was nothing to send).
     @discardableResult
-    func sync() async -> Bool {
+    func sync(trigger: String? = nil) async -> Bool {
         guard !syncing else { return false }
         guard settings.isConfigured else {
             record("Set the server and API key first")
@@ -60,17 +100,22 @@ final class SyncEngine: ObservableObject {
             let now = Date()
             lastSuccess = now
             defaults.set(now, forKey: Self.lastSuccessKey)
+            let prefix = trigger.map { "\($0) sync: " } ?? ""
             if workouts.isEmpty {
-                record("Up to date, nothing new")
+                // A quiet background wake (e.g. the observer's launch call) shouldn't hide the
+                // last real result.
+                if trigger == nil { record("Up to date, nothing new") }
             } else {
-                var text = "Sent \(workouts.count): \(written) written"
+                var text = "\(prefix)Sent \(workouts.count): \(written) written"
                 if skipped > 0 { text += ", \(skipped) rejected" }
                 if merged > 0 { text += ", \(merged) duplicates merged" }
-                record(text)
+                record(text + " at \(now.formatted(date: .omitted, time: .shortened))")
             }
             return true
         } catch {
-            record("Failed: \(error.localizedDescription)")
+            // While the phone is locked HealthKit is unreadable ("Protected health data is
+            // inaccessible"); the anchor stays put, and the next unlock-time sync catches up.
+            record("\(trigger.map { "\($0) sync " } ?? "")failed: \(error.localizedDescription)")
             return false
         }
     }
