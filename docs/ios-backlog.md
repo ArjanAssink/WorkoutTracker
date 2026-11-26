@@ -77,17 +77,21 @@ and in the app's Keychain.
 - *Done when:* the test passes, and one real workout posted from the app shows up as the *same*
   row the export already stored, not a second one.
 
-### 5. Settings: base URL and API key — written, awaiting phone test
+### 5. Settings: base URL and API key — ✅ done 2026-11-26
 - Two fields, stored in the Keychain, never in the repo or `UserDefaults`.
 - A "Test connection" button: `GET /api/health`, then an authenticated `GET /api/workouts?limit=1`.
+- Team ID lives in `ios/Local.xcconfig` (`DEVELOPMENT_TEAM`), so regenerating no longer drops the signing team.
 - Keychain item is `AfterFirstUnlockThisDeviceOnly` so item 7's background sync can read it while locked.
 - *Done when:* a wrong key shows an error and the right key shows OK.
 
-### 6. "Sync now"
+### 6. "Sync now" — written, awaiting phone test
 - `HKAnchoredObjectQuery` for workouts. Save the anchor **only after a 2xx** so a failed post retries.
 - First run: limit to the last 30 days so the first post isn't the whole history (the export
   already has it).
 - Post in chunks (e.g. 50). Show the counts the endpoint returns, and the last sync time.
+- Prerequisite: item 4's relabel fix (`healthAutoExport.ts`) merged to `main` and deployed, or a
+  Strava BJJ class posted by the app gets a second row under `other`.
+- "Re-send the last 30 days" forgets the anchor; harmless, because the backend upserts by id.
 - *Done when:* finishing a workout and tapping Sync puts it on the dashboard, and a second tap
   posts nothing new.
 

@@ -3,7 +3,8 @@ import SwiftUI
 /// Health permission and the last 10 workouts, read-only. Tap one for the JSON it would send.
 struct ContentView: View {
     @StateObject private var health = HealthStore()
-    @StateObject private var settings = AppSettings()
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var sync: SyncEngine
     @State private var showingSettings = false
 
     var body: some View {
@@ -12,6 +13,31 @@ struct ContentView: View {
                 if !settings.isConfigured {
                     Section {
                         Button("Set the server and API key") { showingSettings = true }
+                    }
+                }
+                if settings.isConfigured {
+                    Section("Sync") {
+                        Button {
+                            Task {
+                                await sync.sync()
+                                await health.requestAccessAndLoad()
+                            }
+                        } label: {
+                            HStack {
+                                Text("Sync now")
+                                Spacer()
+                                if sync.syncing { ProgressView() }
+                            }
+                        }
+                        .disabled(sync.syncing)
+                        if let result = sync.lastResult {
+                            Text(result).foregroundStyle(.secondary)
+                        }
+                        if let when = sync.lastSuccess {
+                            Text("Last successful sync \(when.formatted(.relative(presentation: .named)))")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 if let message = health.message {
@@ -28,6 +54,10 @@ struct ContentView: View {
                 }
                 Section {
                     Text("Build \(build)").font(.footnote).foregroundStyle(.secondary)
+                    if settings.isConfigured {
+                        Button("Re-send the last 30 days", role: .destructive) { sync.reset() }
+                            .font(.footnote)
+                    }
                 }
             }
             .navigationTitle("Workout Sync")
@@ -108,5 +138,8 @@ private struct PayloadView: View {
 }
 
 #Preview {
-    ContentView()
+    let settings = AppSettings()
+    return ContentView()
+        .environmentObject(settings)
+        .environmentObject(SyncEngine(settings: settings))
 }
