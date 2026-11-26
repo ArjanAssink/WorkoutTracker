@@ -10,7 +10,7 @@ import HealthKit
 /// it), the duration in seconds — and the recording app's name for the relabels.
 /// `test/nativeAppParity.test.ts` pins the backend half of that contract.
 enum WorkoutPayload {
-    private static let appleDate: DateFormatter = {
+    private static let appleFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
@@ -31,8 +31,8 @@ enum WorkoutPayload {
         var out: [String: Any] = [
             "name": ActivityName.export(w.workoutActivityType),
             "sourceName": w.sourceRevision.source.name,
-            "start": appleDate.string(from: w.startDate),
-            "end": appleDate.string(from: w.endDate),
+            "start": appleFormatter.string(from: w.startDate),
+            "end": appleFormatter.string(from: w.endDate),
             "duration": w.duration,
         ]
 
@@ -57,6 +57,25 @@ enum WorkoutPayload {
             }
         }
         return out
+    }
+
+    static func appleDate(_ date: Date) -> String { appleFormatter.string(from: date) }
+
+    /// The workout plus what the export also carries for it: the heart-rate samples (for
+    /// zones and the session chart) and the GPS track. Slower; used by the real sync.
+    static func enriched(_ w: HKWorkout, store: HKHealthStore) async -> [String: Any] {
+        var out = workout(w)
+        let hr = await HealthRecords.heartRate(during: w, store: store)
+        if !hr.isEmpty { out["heartRateData"] = hr }
+        let track = await HealthRecords.route(of: w, store: store)
+        if track.count >= 2 { out["route"] = track }
+        return out
+    }
+
+    static func body(workouts: [[String: Any]], extra: [String: Any] = [:]) throws -> Data {
+        var data: [String: Any] = ["workouts": workouts]
+        for (k, v) in extra { data[k] = v }
+        return try JSONSerialization.data(withJSONObject: ["data": data], options: [.sortedKeys])
     }
 
     static func body(_ workouts: [HKWorkout]) throws -> Data {

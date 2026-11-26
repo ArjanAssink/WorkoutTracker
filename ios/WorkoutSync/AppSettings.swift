@@ -39,6 +39,8 @@ final class AppSettings: ObservableObject {
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = method
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        // Labels the push "iPhone app" on the server (the silence alert, the logs).
+        request.setValue("workout-sync-ios", forHTTPHeaderField: "x-client")
         return request
     }
 

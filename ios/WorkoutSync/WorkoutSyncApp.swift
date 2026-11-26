@@ -27,7 +27,12 @@ struct WorkoutSyncApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             // Catches up on anything a locked-phone background wake could not read.
-            if phase == .active { Task { await sync.sync(trigger: "On open") } }
+            if phase == .active {
+                Task {
+                    await sync.authorize()
+                    await sync.sync(trigger: "On open")
+                }
+            }
         }
     }
 }

@@ -23,6 +23,7 @@ final class SyncEngine: ObservableObject {
     private static let cutoffKey = "workoutCutoff"
     private static let lastSuccessKey = "lastSuccess"
     private static let lastResultKey = "lastResult"
+    private static let recordsDayKey = "recordsSyncedDay"
     private static let chunkSize = 50
 
     init(settings: AppSettings) {
@@ -36,7 +37,14 @@ final class SyncEngine: ObservableObject {
     /// Must be called at every launch, background launches included, before anything else.
     /// The observer also fires once right after registering, which doubles as a launch sync.
     func startObserving() {
-        let type = HKObjectType.workoutType()
+        // Workouts, and the two health records that arrive once a day and matter that day:
+        // the night's sleep and the morning weigh-in. Everything else rides along.
+        for type in [HKObjectType.workoutType(), HKCategoryType(.sleepAnalysis), HKQuantityType(.bodyMass)] as [HKSampleType] {
+            observe(type)
+        }
+    }
+
+    private func observe(_ type: HKSampleType) {
         let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
             Task { @MainActor in
                 if let error {
@@ -55,6 +63,13 @@ final class SyncEngine: ObservableObject {
                 self?.record("Background delivery unavailable: \(error?.localizedDescription ?? "unknown")")
             }
         }
+    }
+
+    /// Shows the Health permission sheet for any type not asked about yet (new types arrive
+    /// with app updates); returns at once when everything was asked before. Foreground only.
+    func authorize() async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        try? await store.requestAuthorization(toShare: [], read: HealthRecords.readTypes)
     }
 
     /// Asks iOS for extra time so a post started in the background can finish.
@@ -91,28 +106,33 @@ final class SyncEngine: ObservableObject {
 
             var written = 0, skipped = 0, merged = 0
             for start in stride(from: 0, to: workouts.count, by: Self.chunkSize) {
-                let chunk = Array(workouts[start..<min(start + Self.chunkSize, workouts.count)])
-                let reply = try await post(chunk)
+                var chunk: [[String: Any]] = []
+                for w in workouts[start..<min(start + Self.chunkSize, workouts.count)] {
+                    chunk.append(await WorkoutPayload.enriched(w, store: store))
+                }
+                let reply = try await post(WorkoutPayload.body(workouts: chunk))
                 written += reply.written
                 skipped += reply.skipped
                 merged += reply.duplicatesMerged
             }
 
             saveAnchor(result.newAnchor)
+            let records = try await syncRecords()
             lastFailed = false
             let now = Date()
             lastSuccess = now
             defaults.set(now, forKey: Self.lastSuccessKey)
             let prefix = trigger.map { "\($0) sync: " } ?? ""
+            let health = "health data: \(records.days) day\(records.days == 1 ? "" : "s")"
             if workouts.isEmpty {
                 // A quiet background wake (e.g. the observer's launch call) shouldn't hide the
-                // last real result.
-                if trigger == nil { record("Up to date, nothing new") }
+                // last real workout result.
+                if trigger == nil { record("No new workouts · \(health) at \(now.formatted(date: .omitted, time: .shortened))") }
             } else {
                 var text = "\(prefix)Sent \(workouts.count): \(written) written"
                 if skipped > 0 { text += ", \(skipped) rejected" }
                 if merged > 0 { text += ", \(merged) duplicates merged" }
-                record(text + " at \(now.formatted(date: .omitted, time: .shortened))")
+                record(text + " · \(health) at \(now.formatted(date: .omitted, time: .shortened))")
             }
             return true
         } catch {
@@ -128,6 +148,7 @@ final class SyncEngine: ObservableObject {
     func reset() {
         defaults.removeObject(forKey: Self.anchorKey)
         defaults.removeObject(forKey: Self.cutoffKey)
+        defaults.removeObject(forKey: Self.recordsDayKey)
         record("Reset: next sync re-sends the last 30 days")
     }
 
@@ -152,12 +173,36 @@ final class SyncEngine: ObservableObject {
         var errorDescription: String? { "server answered \(status) \(body.prefix(200))" }
     }
 
-    private func post(_ workouts: [HKWorkout]) async throws -> Reply {
+    /// Weight, sleep, resting HR, HRV, respiratory rate, SpO2, wrist temperature, breathing
+    /// disturbances, daylight and steps — whole days, from noon the day before the last
+    /// synced day (the server writes only days after that date; see nativeRecords.ts).
+    private func syncRecords() async throws -> (days: Int, records: Int) {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let oldest = calendar.date(byAdding: .day, value: -30, to: today)!
+        var firstDay = oldest
+        if let last = defaults.object(forKey: Self.recordsDayKey) as? Date,
+           let before = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: last)) {
+            firstDay = max(before, oldest)
+        }
+        let from = calendar.date(byAdding: .hour, value: 12, to: firstDay)!
+        let records = await HealthRecords.collect(since: from, store: store)
+        let body = try WorkoutPayload.body(workouts: [], extra: [
+            "records": records,
+            "recordsWindow": ["from": WorkoutPayload.appleDate(from)],
+        ])
+        _ = try await post(body)
+        defaults.set(Date(), forKey: Self.recordsDayKey)
+        let days = calendar.dateComponents([.day], from: firstDay, to: today).day ?? 0
+        return (days, records.count)
+    }
+
+    private func post(_ body: Data) async throws -> Reply {
         guard var request = settings.request(path: "api/ingest/health-auto-export", method: "POST") else {
             throw HTTPError(status: 0, body: "bad server address")
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try WorkoutPayload.body(workouts)
+        request.httpBody = body
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {

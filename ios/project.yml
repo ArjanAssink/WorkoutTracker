@@ -31,6 +31,6 @@ targets:
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: This app does not write to Health.
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "0.2"
-        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: "0.3"
+        CURRENT_PROJECT_VERSION: "9"
         SWIFT_VERSION: "5.0"
