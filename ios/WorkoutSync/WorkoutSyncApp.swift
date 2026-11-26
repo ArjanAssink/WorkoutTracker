@@ -4,6 +4,7 @@ import SwiftUI
 struct WorkoutSyncApp: App {
     @StateObject private var settings: AppSettings
     @StateObject private var sync: SyncEngine
+    @StateObject private var bridge: WebBridge
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -14,13 +15,15 @@ struct WorkoutSyncApp: App {
         engine.startObserving()
         _settings = StateObject(wrappedValue: settings)
         _sync = StateObject(wrappedValue: engine)
+        _bridge = StateObject(wrappedValue: WebBridge(settings: settings, sync: engine))
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environmentObject(settings)
                 .environmentObject(sync)
+                .environmentObject(bridge)
         }
         .onChange(of: scenePhase) { _, phase in
             // Catches up on anything a locked-phone background wake could not read.

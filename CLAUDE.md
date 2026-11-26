@@ -159,8 +159,11 @@ against every other, and relabelling a slug changes identity.
 
 6. **Native iOS app** — planned, not started (2026-11-25). Backlog and decisions in
    `docs/ios-backlog.md`: free Apple ID + Xcode on the user's Mac (7-day reinstall), workouts
-   only, posting to the existing HAE endpoint. Work the items in order; the free team's
-   HealthKit background-delivery support is unverified.
+   only, posting to the existing HAE endpoint. Items 1–6 verified on the phone and live;
+   7 (background delivery) and 9–10 (icon; the dashboard in a web view, key injected into
+   localStorage, the in-app-only "Phone sync" chip via `window.workoutSyncNative`) await the
+   phone. `ios/` is XcodeGen; run `xcodegen` after every pull. Native code is never compiled
+   here (no Swift toolchain) — the user's Xcode build is the first compile.
 
 ## Working agreements
 

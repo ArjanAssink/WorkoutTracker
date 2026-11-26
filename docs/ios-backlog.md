@@ -116,6 +116,31 @@ and in the app's Keychain.
 - Write the reinstall routine in `ios/README.md` (plug in, Run, done).
 - *Done when:* the routine is written down and has been done once.
 
+## After the MVP: one app, not two
+
+### 9. App icon — written 2026-11-26
+- Same W and blue family as the web app's icon, on a deeper gradient, with a sync badge, so the
+  home-screen bookmark and the app are told apart at a glance.
+  `scripts/dev/make-ios-icon.py` draws it into `ios/WorkoutSync/Assets.xcassets`.
+
+### 10. The dashboard inside the app — written 2026-11-26
+- The app opens on `/api/dashboard` in a web view. The native screen (sync status, Sync now,
+  settings, the HealthKit list) is a sheet over it.
+- **Key:** the app writes its Keychain key into the page's localStorage
+  (`workout-tracker.apiKey`, the name every page reads) before any page script runs, on the
+  configured host only, so the key gate never appears in the app.
+- **Status → page:** `window.workoutSyncNative` = `{ lastSuccess, lastResult, syncing, failed }`
+  plus a `workout-sync-native` event on change. The dashboard header shows a **Phone sync** chip
+  (green; amber when failed or older than 3 days) only when that bridge exists, so a browser or the
+  PWA never sees it. Tapping it posts `{ action: "openSync" }` to the `workoutSync` handler.
+- Links to other hosts open in Safari. Pull to refresh reloads the page and syncs. The web view
+  can be inspected from Safari → Develop on the Mac.
+- Until a server and key are set, the native screen is the whole app.
+- Open: the other pages (Strength, Recovery…) get the key and work in the app, but the chip is
+  on the dashboard only.
+- *Done when:* the app opens on the dashboard without asking for a key, the chip shows the last
+  sync, and tapping it opens the native screen.
+
 ## Later (not MVP — pick by need)
 
 - **Source label.** The endpoint stamps pushes and notifications as "Health Auto Export". Let the
@@ -133,4 +158,6 @@ and in the app's Keychain.
   and uploads to TestFlight; internal testers need no App Store review. Builds last 90 days, so
   add a scheduled monthly rebuild. One-time setup: join the program, register the app ID with
   HealthKit, create the app record (never published), store the API key as a repo secret.
+- **Last push from the server's side.** The chip shows what the phone knows. The server also
+  knows (`ingest.lastPush.workouts`) and could show it on every page and in the PWA.
 - **Notifications in the app.** Read `/api/notifications` natively, or push via APNs (paid account only).

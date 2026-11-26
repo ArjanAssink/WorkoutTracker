@@ -13,6 +13,8 @@ final class SyncEngine: ObservableObject {
     @Published private(set) var syncing = false
     @Published private(set) var lastResult: String?
     @Published private(set) var lastSuccess: Date?
+    /// Whether the most recent attempt failed; the dashboard chip turns amber on it.
+    @Published private(set) var lastFailed = false
 
     private let store = HKHealthStore()
     private let settings: AppSettings
@@ -97,6 +99,7 @@ final class SyncEngine: ObservableObject {
             }
 
             saveAnchor(result.newAnchor)
+            lastFailed = false
             let now = Date()
             lastSuccess = now
             defaults.set(now, forKey: Self.lastSuccessKey)
@@ -116,6 +119,7 @@ final class SyncEngine: ObservableObject {
             // While the phone is locked HealthKit is unreadable ("Protected health data is
             // inaccessible"); the anchor stays put, and the next unlock-time sync catches up.
             record("\(trigger.map { "\($0) sync " } ?? "")failed: \(error.localizedDescription)")
+            lastFailed = true
             return false
         }
     }

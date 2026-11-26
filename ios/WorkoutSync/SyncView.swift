@@ -1,7 +1,15 @@
 import SwiftUI
 
-/// Health permission and the last 10 workouts, read-only. Tap one for the JSON it would send.
-struct ContentView: View {
+/// The native screen: sync status and controls, settings, and the last 10 workouts from
+/// HealthKit (tap one for the JSON it sends). Opened from the dashboard's phone-sync chip;
+/// it is the whole app until a server and key are set.
+struct SyncView: View {
+    /// Set when shown as a sheet over the dashboard.
+    var onDone: (() -> Void)?
+
+    init(onDone: (() -> Void)? = nil) {
+        self.onDone = onDone
+    }
     @StateObject private var health = HealthStore()
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var sync: SyncEngine
@@ -68,6 +76,11 @@ struct ContentView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
+                }
+                if let onDone {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: onDone)
+                    }
                 }
             }
             .sheet(isPresented: $showingSettings) { SettingsView(settings: settings) }
@@ -139,7 +152,7 @@ private struct PayloadView: View {
 
 #Preview {
     let settings = AppSettings()
-    return ContentView()
+    return SyncView()
         .environmentObject(settings)
         .environmentObject(SyncEngine(settings: settings))
 }
