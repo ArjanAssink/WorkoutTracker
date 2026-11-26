@@ -35,6 +35,28 @@ export interface HeartRateHistogram {
 }
 
 /**
+ * The bar a sample stream must clear before it stands for a session: ten readings, and one
+ * per two minutes. The export's `HeartRateIndex` applies the same rule, so a watch glance
+ * during a class never becomes its average.
+ */
+export function isThickEnough(samples: number, from: number, to: number): boolean {
+  return samples >= 10 && samples / Math.max(1, (to - from) / 60_000) >= 0.5;
+}
+
+/**
+ * Average, minimum and maximum of the samples inside [from, to] (epoch ms), or undefined
+ * when too thin to trust. For workouts whose recorder wrote no statistics — a Polar strap
+ * saves the session to Health with its heart rate as loose samples beside it.
+ */
+export function summariseSamples(samples: HeartRateSample[], from: number, to: number): { average: number; min: number; max: number } | undefined {
+  const inside = samples.filter((s) => s.at >= from && s.at <= to && Number.isFinite(s.bpm) && s.bpm >= 20 && s.bpm <= 250);
+  if (!isThickEnough(inside.length, from, to)) return undefined;
+  let sum = 0, min = Infinity, max = -Infinity;
+  for (const { bpm } of inside) { sum += bpm; if (bpm < min) min = bpm; if (bpm > max) max = bpm; }
+  return { average: sum / inside.length, min, max };
+}
+
+/**
  * Builds the histogram for the samples inside [from, to] (epoch ms), or undefined when the
  * recording is too thin to be a recording — the same bar the export parser applies before
  * trusting loose samples for an average: ten readings, and one per two minutes.
@@ -43,8 +65,7 @@ export function buildHistogram(samples: HeartRateSample[], from: number, to: num
   const inside = samples
     .filter((s) => s.at >= from && s.at <= to && Number.isFinite(s.bpm) && s.bpm >= 20 && s.bpm <= 250)
     .sort((a, b) => a.at - b.at);
-  const minutes = Math.max(1, (to - from) / 60_000);
-  if (inside.length < 10 || inside.length / minutes < 0.5) return undefined;
+  if (!isThickEnough(inside.length, from, to)) return undefined;
 
   const bins = new Map<number, number>();
   for (let i = 0; i < inside.length; i++) {

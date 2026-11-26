@@ -5,7 +5,7 @@ import type { WorkoutInput } from "../domain/workout.js";
 import { parseAppleDate } from "./shortcutPayload.js";
 import type { NightSummary, RecoveryMetric, RecoverySample } from "../domain/recovery.js";
 import { toKcal, toMeters } from "./units.js";
-import { buildHistogram, encodeHistogram, type HeartRateSample } from "../domain/heartRateZones.js";
+import { buildHistogram, encodeHistogram, summariseSamples, type HeartRateSample } from "../domain/heartRateZones.js";
 import { buildSeries, encodeSeries } from "../domain/heartRateSeries.js";
 
 /**
@@ -232,6 +232,9 @@ function parseOne(entry: unknown): WorkoutInput {
   const stream = timedHeartRate(w.heartRateData ?? w.heartRate);
   const histogram = buildHistogram(stream, startedAt.getTime(), end.getTime());
   const series = buildSeries(stream, startedAt.getTime(), end.getTime());
+  // A workout whose recorder wrote no heart-rate statistics (Polar, Strava) still carries
+  // its samples in the stream; summarise those, as the export does for the same workout.
+  const fromSamples = summariseSamples(stream, startedAt.getTime(), end.getTime());
   const totalEnergy = measure(w.totalEnergyBurned ?? w.totalEnergy, toKcal, "kcal", "sum");
 
   const recordedBy = typeof w.sourceName === "string" ? w.sourceName : undefined;
@@ -249,9 +252,9 @@ function parseOne(entry: unknown): WorkoutInput {
     ...set("distanceMeters", measure(w.distance, toMeters, "m", "sum")),
     ...set("activeEnergyKcal", activeEnergy),
     ...set("totalEnergyKcal", totalEnergy),
-    ...set("averageHeartRate", round(measure(w.avgHeartRate ?? w.heartRate, (v) => v, "bpm", "avg"))),
-    ...set("minHeartRate", round(measure(w.minHeartRate ?? w.heartRate, (v) => v, "bpm", "min"))),
-    ...set("maxHeartRate", round(measure(w.maxHeartRate ?? w.heartRate, (v) => v, "bpm", "max"))),
+    ...set("averageHeartRate", round(measure(w.avgHeartRate ?? w.heartRate, (v) => v, "bpm", "avg") ?? fromSamples?.average)),
+    ...set("minHeartRate", round(measure(w.minHeartRate ?? w.heartRate, (v) => v, "bpm", "min") ?? fromSamples?.min)),
+    ...set("maxHeartRate", round(measure(w.maxHeartRate ?? w.heartRate, (v) => v, "bpm", "max") ?? fromSamples?.max)),
   };
 }
 

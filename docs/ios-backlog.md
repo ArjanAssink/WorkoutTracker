@@ -147,8 +147,13 @@ and in the app's Keychain.
   app identify itself (e.g. an `x-client` header) so the silence alert and logs say "iPhone app".
   This is a small backend change.
 - **Body weight.** `HKQuantityType(.bodyMass)` → the `data.metrics` weight the endpoint already reads.
-- **HR series and zones.** Per-workout heart-rate samples → the `heartrate` table and the zone histogram
-  (the export import does this today).
+- **HR series and zones — done (2026-11-26).** `WorkoutPayload.heartRateSamples` queries the
+  readings inside each workout's window from any device and sends them as `heartRateData`
+  (`{ date, qty }`); the backend builds the histogram and series, and summarises the stream
+  when the workout has no statistics. That last part is what Polar-recorded BJJ needs: its
+  sessions arrive with no statistics, and until this shipped they were stored with no heart
+  rate at all and scored by duration. Chunks dropped from 50 to 5 workouts for the payload size.
+  After installing the build, *Reset* re-sends the last 30 days and fills the gaps in.
 - **Recovery.** Sleep stages, resting HR, HRV, steps → the recovery fields. This also settles
   the open question about HAE `sleep_analysis` field names, because we would control the shape.
 - **Routes.** `HKWorkoutRoute` → GPX → `routes`.

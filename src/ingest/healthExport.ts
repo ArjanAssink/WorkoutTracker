@@ -7,7 +7,7 @@ import { parseAppleDate } from "./shortcutPayload.js";
 import { toKg, type WeightReading } from "../domain/bodyWeight.js";
 import type { RecoveryMetric, RecoverySample, SleepStage } from "../domain/recovery.js";
 import { toKcal, toMeters, toSeconds } from "./units.js";
-import { buildHistogram, encodeHistogram, type HeartRateSample } from "../domain/heartRateZones.js";
+import { buildHistogram, encodeHistogram, isThickEnough, type HeartRateSample } from "../domain/heartRateZones.js";
 import { buildSeries, encodeSeries } from "../domain/heartRateSeries.js";
 
 /**
@@ -73,8 +73,7 @@ class HeartRateIndex {
     }
     // A handful of readings across an hour is a watch glance, not a recording of the
     // session: require at least one sample per two minutes, and at least ten overall.
-    const minutes = Math.max(1, (to - from) / 60_000);
-    if (n < 10 || n / minutes < 0.5) return undefined;
+    if (!isThickEnough(n, from, to)) return undefined;
     return { average: sum / n, min, max, samples: n };
   }
 

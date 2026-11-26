@@ -23,7 +23,9 @@ final class SyncEngine: ObservableObject {
     private static let cutoffKey = "workoutCutoff"
     private static let lastSuccessKey = "lastSuccess"
     private static let lastResultKey = "lastResult"
-    private static let chunkSize = 50
+    /// Small, because each workout carries its heart-rate samples: a two-hour session from a
+    /// strap that reads every second is ~7,200 of them, a few hundred KB of JSON.
+    private static let chunkSize = 5
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -157,7 +159,11 @@ final class SyncEngine: ObservableObject {
             throw HTTPError(status: 0, body: "bad server address")
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try WorkoutPayload.body(workouts)
+        var withHeartRate: [(workout: HKWorkout, heartRate: [HKQuantitySample])] = []
+        for workout in workouts {
+            withHeartRate.append((workout, try await WorkoutPayload.heartRateSamples(for: workout, in: store)))
+        }
+        request.httpBody = try WorkoutPayload.body(withHeartRate)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {

@@ -294,6 +294,10 @@ malformed envelope still returns 400. Keep that asymmetry.
   precede the `<Workout>`s in the file. `HeartRateIndex` buffers them (~16 MB per million)
   and `toWorkoutInput` consults it only when the workout has no `WorkoutStatistics`. Stray
   readings (<10, or <0.5/min) are rejected so a watch glance never becomes an average.
+  The native app has the same gap and the same fix: it sends each workout's samples as
+  `heartRateData`, and `parseHealthAutoExport` summarises them (`summariseSamples`, same
+  `isThickEnough` bar) when the workout carries no statistics. Before that build, Polar BJJ
+  sent from the app was stored with no heart rate (Oct 30 – Nov 25 2026).
 - **`relabelActivity` changes identity and must run at parse time**, before the id is
   derived. Rows written under the old slug are not removed by a re-import; delete them.
 - **Strength is its own page, table and importers** (`strength.ts`, `liftRepository.ts`,

@@ -114,6 +114,44 @@ describe("measurement shapes the app actually sends", () => {
     expect(w.heartRateSeries).toMatch(/^5:130,/);
   });
 
+  describe("a workout whose recorder wrote no heart-rate statistics", () => {
+    // A Polar strap saves a BJJ class to Health with no statistics: the heart rate is loose
+    // samples beside it. The native app sends those as `heartRateData`, one { date, qty } per
+    // reading, and the summary must come from them — as the export does for the same class.
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const at = (second: number) => {
+      const t = 19 * 3600 + 40 * 60 + second;
+      return `2026-11-25 ${pad(Math.floor(t / 3600))}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)} +0100`;
+    };
+    const polar = {
+      name: "HKWorkoutActivityTypeMartialArts", sourceName: "Polar Flow",
+      start: "2026-11-25 19:40:00 +0100", end: "2026-11-25 20:39:59 +0100", duration: 3599,
+    };
+    // An hour at one reading a second: 110 bpm, a minute at 170 every ten, one reading of 193.
+    const samples = Array.from({ length: 3600 }, (_, s) => ({ date: at(s), qty: s === 1800 ? 193 : s % 600 < 60 ? 170 : 110 }));
+
+    it("takes average, minimum and maximum from the samples", () => {
+      const w = parseHealthAutoExportBatch({ data: { workouts: [{ ...polar, heartRateData: samples }] } }).workouts[0]!;
+      expect(w.maxHeartRate).toBe(193);
+      expect(w.minHeartRate).toBe(110);
+      expect(w.averageHeartRate).toBe(116); // (360 × 170 + 3239 × 110 + 193) / 3600
+      expect(decodeHistogram(w.heartRateHistogram)).toBeDefined();
+    });
+
+    it("lets the workout's own statistics win when it has them", () => {
+      const w = parseHealthAutoExportBatch({ data: { workouts: [{ ...polar, heartRateData: samples, avgHeartRate: 131, maxHeartRate: 188 }] } }).workouts[0]!;
+      expect(w.averageHeartRate).toBe(131);
+      expect(w.maxHeartRate).toBe(188);
+    });
+
+    it("ignores a stream too thin to be a recording — a glance at the watch", () => {
+      const glances = [0, 900, 1800, 2700, 3500].map((s) => ({ date: at(s), qty: 150 }));
+      const w = parseHealthAutoExportBatch({ data: { workouts: [{ ...polar, heartRateData: glances }] } }).workouts[0]!;
+      expect(w.averageHeartRate).toBeUndefined();
+      expect(w.maxHeartRate).toBeUndefined();
+    });
+  });
+
   it("stores no histogram for an undated heart-rate series", () => {
     const w = parseHealthAutoExportBatch({ workouts: [{ ...base, heartRate: [{ Avg: 140 }, { Avg: 150 }] }] }).workouts[0]!;
     expect(w.heartRateHistogram).toBeUndefined();

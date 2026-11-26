@@ -27,7 +27,20 @@ enum WorkoutPayload {
         HKQuantityType(.distanceDownhillSnowSports),
     ]
 
-    static func workout(_ w: HKWorkout) -> [String: Any] {
+    /// The heart-rate samples recorded during a workout, from any device. A Polar strap saves
+    /// its sessions with no heart-rate statistics on the workout — the readings sit beside it
+    /// as loose samples — so this is the only way their heart rate reaches the backend, which
+    /// summarises the stream when statistics are missing and builds time in zone from it always.
+    static func heartRateSamples(for w: HKWorkout, in store: HKHealthStore) async throws -> [HKQuantitySample] {
+        let window = HKQuery.predicateForSamples(withStart: w.startDate, end: w.endDate, options: [])
+        let query = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: HKQuantityType(.heartRate), predicate: window)],
+            sortDescriptors: [SortDescriptor(\.startDate)]
+        )
+        return try await query.result(for: store)
+    }
+
+    static func workout(_ w: HKWorkout, heartRate: [HKQuantitySample] = []) -> [String: Any] {
         var out: [String: Any] = [
             "name": ActivityName.export(w.workoutActivityType),
             "sourceName": w.sourceRevision.source.name,
@@ -41,6 +54,12 @@ enum WorkoutPayload {
             if let v = hr.averageQuantity()?.doubleValue(for: bpm) { out["avgHeartRate"] = v }
             if let v = hr.minimumQuantity()?.doubleValue(for: bpm) { out["minHeartRate"] = v }
             if let v = hr.maximumQuantity()?.doubleValue(for: bpm) { out["maxHeartRate"] = v }
+        }
+        if !heartRate.isEmpty {
+            // The shape Health Auto Export uses for a dated series: { date, qty } per reading.
+            out["heartRateData"] = heartRate.map {
+                ["date": appleDate.string(from: $0.startDate), "qty": $0.quantity.doubleValue(for: bpm)] as [String: Any]
+            }
         }
 
         let active = sum(w, .activeEnergyBurned, .kilocalorie())
@@ -59,9 +78,9 @@ enum WorkoutPayload {
         return out
     }
 
-    static func body(_ workouts: [HKWorkout]) throws -> Data {
+    static func body(_ workouts: [(workout: HKWorkout, heartRate: [HKQuantitySample])]) throws -> Data {
         try JSONSerialization.data(
-            withJSONObject: ["data": ["workouts": workouts.map(workout)]],
+            withJSONObject: ["data": ["workouts": workouts.map { workout($0.workout, heartRate: $0.heartRate) }]],
             options: [.sortedKeys]
         )
     }
