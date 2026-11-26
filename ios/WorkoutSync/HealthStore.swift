@@ -1,7 +1,7 @@
 import Foundation
 import HealthKit
 
-/// One workout as the screen shows it. Backlog item 3: read-only, nothing is sent yet.
+/// One workout as the screen shows it. Read-only: nothing is sent yet.
 struct WorkoutRow: Identifiable {
     let id: UUID
     let name: String
@@ -10,6 +10,8 @@ struct WorkoutRow: Identifiable {
     let duration: TimeInterval
     let averageHeartRate: Double?
     let source: String
+    /// Exactly what would be posted for this workout (item 4); nothing is sent yet.
+    let payload: String
 
     init(_ workout: HKWorkout) {
         id = workout.uuid
@@ -21,6 +23,7 @@ struct WorkoutRow: Identifiable {
         averageHeartRate = workout.statistics(for: HKQuantityType(.heartRate))?
             .averageQuantity()?.doubleValue(for: bpm)
         source = workout.sourceRevision.source.name
+        payload = WorkoutPayload.preview(workout)
     }
 }
 
@@ -37,6 +40,9 @@ final class HealthStore: ObservableObject {
             HKObjectType.workoutType(),
             HKQuantityType(.heartRate),
             HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.basalEnergyBurned),
+            HKQuantityType(.distanceWheelchair),
+            HKQuantityType(.distanceDownhillSnowSports),
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.distanceCycling),
             HKQuantityType(.distanceSwimming),

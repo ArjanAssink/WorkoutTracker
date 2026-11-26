@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Backlog item 3: Health permission and the last 10 workouts, read-only.
+/// Health permission and the last 10 workouts, read-only. Tap one for the JSON it would send.
 struct ContentView: View {
     @StateObject private var health = HealthStore()
 
@@ -11,7 +11,13 @@ struct ContentView: View {
                     Section { Text(message).foregroundStyle(.secondary) }
                 }
                 Section("Last 10 workouts") {
-                    ForEach(health.workouts) { WorkoutRowView(row: $0) }
+                    ForEach(health.workouts) { row in
+                        NavigationLink {
+                            PayloadView(row: row)
+                        } label: {
+                            WorkoutRowView(row: row)
+                        }
+                    }
                 }
                 Section {
                     Text("Build \(build)").font(.footnote).foregroundStyle(.secondary)
@@ -64,6 +70,26 @@ private struct WorkoutRowView: View {
         f.allowedUnits = [.hour, .minute]
         f.unitsStyle = .abbreviated
         return f.string(from: row.duration) ?? ""
+    }
+}
+
+/// The body that would be posted for one workout (backlog item 4), to check by eye.
+private struct PayloadView: View {
+    let row: WorkoutRow
+
+    var body: some View {
+        ScrollView {
+            Text(row.payload)
+                .font(.system(.footnote, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+        .navigationTitle(row.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            Button("Copy") { UIPasteboard.general.string = row.payload }
+        }
     }
 }
 

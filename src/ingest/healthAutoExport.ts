@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normaliseActivityType } from "../domain/activityType.js";
+import { normaliseActivityType, relabelActivity } from "../domain/activityType.js";
 import { toKg, type WeightReading } from "../domain/bodyWeight.js";
 import type { WorkoutInput } from "../domain/workout.js";
 import { parseAppleDate } from "./shortcutPayload.js";
@@ -55,6 +55,9 @@ const workoutSchema = z
     // Per-minute series ({ date, Avg, Min, Max }) when granular data is on. Field name from
     // the app's documentation, not yet seen in a real payload.
     heartRateData: z.unknown().optional(),
+    // The app that recorded the workout ("Apple Watch", "Strava"). The native iOS app sends
+    // it; the relabels need it (Strava "Other" ≥ 60 min is BJJ), exactly as the export does.
+    sourceName: z.unknown().optional(),
   })
   .passthrough();
 
@@ -231,8 +234,11 @@ function parseOne(entry: unknown): WorkoutInput {
   const series = buildSeries(stream, startedAt.getTime(), end.getTime());
   const totalEnergy = measure(w.totalEnergyBurned ?? w.totalEnergy, toKcal, "kcal", "sum");
 
+  const recordedBy = typeof w.sourceName === "string" ? w.sourceName : undefined;
   return {
-    activityType: normaliseActivityType(w.name),
+    // The same relabel the export applies, or a Strava BJJ class posted here would get a
+    // different slug — and so a different id — from the row the export already stored.
+    activityType: relabelActivity(normaliseActivityType(w.name), { sourceName: recordedBy, durationSeconds }),
     startedAt: startedAt.toISOString(),
     endedAt: end.toISOString(),
     durationSeconds: Math.round(durationSeconds),

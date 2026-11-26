@@ -25,7 +25,7 @@ API key. They go in a gitignored `ios/Local.xcconfig` (template: `Local.xcconfig
 and in the app's Keychain.
 
 **Inferred, not yet tested.** Verify these early, because they decide whether the free route works at all:
-- A free personal team can sign an app with the **HealthKit** capability. I believe yes.
+- ~~A free personal team can sign an app with the **HealthKit** capability.~~ **Confirmed 2026-11-26.**
 - A free personal team can use HealthKit **background delivery**
   (`com.apple.developer.healthkit.background-delivery`). This is the uncertain one; item 7 tests it.
 - Free-team limits: about 3 sideloaded apps per device and 10 new app IDs per 7 days.
@@ -50,7 +50,7 @@ and in the app's Keychain.
   appears in Settings after Xcode has seen the phone; Xcode must finish downloading the iOS
   platform before it can prepare the device.
 
-### 3. HealthKit permission and a read-only list
+### 3. HealthKit permission and a read-only list — ✅ done 2026-11-26
 - HealthKit capability and entitlement, `NSHealthShareUsageDescription`, a request for read access to
   workouts, heart rate and active energy.
 - The screen lists the last 10 workouts (type, start, duration, avg HR).
@@ -67,6 +67,11 @@ and in the app's Keychain.
 - Backend side: a test in `test/` that feeds an app-shaped payload (synthetic, no real
   data) through the HAE parser and asserts the id equals the export parser's id for the same
   workout. This may need small parser tweaks; keep them lenient.
+- Status (2026-11-26): `test/nativeAppParity.test.ts` passes. The HAE parser now applies
+  `relabelActivity` with the payload's `sourceName`, as the export does; before this, a Strava "Other"
+  class or a "Wrestling" entry via HAE got a different slug from the export. The app shows each
+  workout's JSON (tap a row). Still inferred: that `DateFormatter` truncates sub-second starts the
+  way the export does. The live check below settles it.
 - *Done when:* the test passes, and one real workout posted from the app shows up as the *same*
   row the export already stored, not a second one.
 
