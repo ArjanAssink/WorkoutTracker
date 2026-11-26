@@ -1,5 +1,6 @@
 import type { AthleteProfile } from "../domain/effort.js";
 import { DEFAULT_PROFILE } from "../domain/effort.js";
+import { parsePrivacyZone, type PrivacyZone } from "../domain/routes.js";
 import { DEFAULT_GOALS, parseGoalTargets, type GoalPeriod, type GoalSchedule, type GoalSpec } from "../domain/goals.js";
 
 export interface AppConfig extends TableTarget {
@@ -23,6 +24,11 @@ export interface AppConfig extends TableTarget {
   strava: { clientId: string; clientSecret: string } | undefined;
   /** Where this app is reachable, for OAuth callbacks. */
   publicUrl: string | undefined;
+  /**
+   * `ROUTE_PRIVACY_ZONE` (lat,lon,metres): points inside it are dropped from routes the
+   * phone sends, as the import does with the same variable from `.env`. Unset keeps all.
+   */
+  routePrivacy: PrivacyZone | undefined;
 }
 
 export class ConfigError extends Error {
@@ -134,6 +140,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       env["TELEGRAM_BOT_TOKEN"] && env["TELEGRAM_CHAT_ID"]
         ? { botToken: env["TELEGRAM_BOT_TOKEN"], chatId: env["TELEGRAM_CHAT_ID"] }
         : undefined,
+    routePrivacy: parsePrivacyZone(env["ROUTE_PRIVACY_ZONE"]),
     strava:
       env["STRAVA_CLIENT_ID"] && env["STRAVA_CLIENT_SECRET"]
         ? { clientId: env["STRAVA_CLIENT_ID"], clientSecret: env["STRAVA_CLIENT_SECRET"] }

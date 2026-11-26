@@ -13,7 +13,9 @@ import type { WorkoutInput } from "../domain/workout.js";
 import { announceMilestones } from "./notifyMilestones.js";
 import { invalidatePatterns } from "./patterns.js";
 import { recordPush } from "./ingestWatch.js";
-import { getBodyWeightRepository, getHeartRateSeriesRepository, getRecoveryRepository, getRepository, observedMaxResolver } from "./shared.js";
+import { extractNativeRecords } from "../ingest/nativeRecords.js";
+import { buildRouteRecord, type PrivacyZone } from "../domain/routes.js";
+import { getBodyWeightRepository, getHeartRateSeriesRepository, getRecoveryRepository, getRepository, getRouteRepository, observedMaxResolver } from "./shared.js";
 
 /**
  * Batch ingest for the Health Auto Export app, which is how workouts get here
@@ -84,12 +86,29 @@ export async function ingestHealthAutoExport(
     }
   }
 
+  // The native iOS app sends raw Health records in export.xml's shape over whole days; they
+  // go through the export's own converters and aggregation, and only complete days are
+  // written (see nativeRecords.ts). Both tables merge or upsert, so a re-sent day is harmless.
+  const native = extractNativeRecords(body);
+  const nativeAfter = native.afterDay;
+  if (nativeAfter && (native.weights.length || native.recovery.length)) {
+    const days = dailyRecovery({ samples: native.recovery }, "health-export").filter((d) => d.date > nativeAfter);
+    const weighed = dailyWeights(native.weights, "health-export").filter((w) => w.date > nativeAfter);
+    try {
+      if (days.length) recoveryWritten += await (await getRecoveryRepository()).upsertMany(days);
+      if (weighed.length) weightsWritten += await (await getBodyWeightRepository()).upsertMany(weighed);
+    } catch (error) {
+      context.error("Failed to store the app's health records", error);
+      return serverError("Failed to store health records");
+    }
+  }
+
   let parsed: BatchResult;
   try {
     parsed = parseHealthAutoExportBatch(body);
   } catch (error) {
     if (error instanceof HealthAutoExportError) {
-      if (weightsWritten > 0 || recoveryWritten > 0) return ok({ received: 0, written: 0, skipped: 0, details: [], weightsWritten, recoveryWritten });
+      if (weightsWritten > 0 || recoveryWritten > 0 || native.received > 0) return ok({ received: 0, written: 0, skipped: 0, details: [], weightsWritten, recoveryWritten, recordsReceived: native.received });
       return badRequest(error.message);
     }
     throw error;
@@ -117,10 +136,12 @@ export async function ingestHealthAutoExport(
 
   // The HR series rides on the input but lives in its own table; keyed by id once built.
   const seriesById = new Map<string, string>();
+  const trackById = new Map<string, Array<{ lat: number; lon: number }>>();
   parsed.workouts.forEach((input, index) => {
     try {
       const built = buildWorkout(input, (w) => scoreWithReference(w, settings.profile, observedMax(w)));
       if (input.heartRateSeries) seriesById.set(built.id, input.heartRateSeries);
+      if (input.routeTrack) trackById.set(built.id, input.routeTrack);
       ready.push(built);
     } catch (error) {
       if (error instanceof WorkoutValidationError) {
@@ -152,10 +173,12 @@ export async function ingestHealthAutoExport(
   try {
     const written = await repository.upsertMany(ready);
     await storeSeries(ready, seriesById, context);
+    await storeRoutes(ready, trackById, settings.routePrivacy, context);
     if (written > 0 || recoveryWritten > 0 || weightsWritten > 0) invalidatePatterns();
     // Two automations share this endpoint: one sends workouts, the other the health metrics. Stamp whichever this was.
-    if (parsed.workouts.length + parsed.skipped.length > 0) await recordPush("workouts", "Health Auto Export", context);
-    if (metricNames.length) await recordPush("metrics", "Health Auto Export", context);
+    const sender = request.headers.get("x-client") === "workout-sync-ios" ? "iPhone app" : "Health Auto Export";
+    if (parsed.workouts.length + parsed.skipped.length > 0) await recordPush("workouts", sender, context);
+    if (metricNames.length || native.received > 0) await recordPush("metrics", sender, context);
     // The batch re-posts the same days every morning; the milestone state keeps that quiet.
     if (written > 0) await announceMilestones(ready, context);
 
@@ -174,6 +197,8 @@ export async function ingestHealthAutoExport(
       details: rejected.slice(0, 10),
       ...(merged ? { duplicatesMerged: merged } : {}),
       ...(weightsWritten > 0 ? { weightsWritten } : {}),
+      ...(recoveryWritten > 0 ? { recoveryWritten } : {}),
+      ...(native.received > 0 ? { recordsReceived: native.received } : {}),
     });
   } catch (error) {
     context.error("Failed to store Health Auto Export batch", error);
@@ -192,6 +217,22 @@ async function storeSeries(workouts: Workout[], seriesById: Map<string, string>,
     await (await getHeartRateSeriesRepository()).upsertMany(records);
   } catch (error) {
     context.warn("Could not store heart-rate series", error);
+  }
+}
+
+/** Best effort, like the series: a route that cannot be stored never fails the batch. */
+async function storeRoutes(workouts: Workout[], trackById: Map<string, Array<{ lat: number; lon: number }>>, privacy: PrivacyZone | undefined, context: InvocationContext): Promise<void> {
+  const now = new Date();
+  const records = workouts.flatMap((w) => {
+    const track = trackById.get(w.id);
+    const route = track ? buildRouteRecord(w, track, "ios-app", now, privacy) : undefined;
+    return route ? [route] : [];
+  });
+  if (!records.length) return;
+  try {
+    await (await getRouteRepository()).upsertMany(records);
+  } catch (error) {
+    context.warn("Could not store routes", error);
   }
 }
 
