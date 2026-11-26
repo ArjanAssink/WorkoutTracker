@@ -178,6 +178,11 @@ svg .ref-label { fill: var(--text-muted); font-size: 11px; }
   background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px;
 }
 .icon-btn:hover { background: var(--hover-wash); }
+/* Phone sync chip: only exists inside the native iOS app, which provides the status. */
+.sync-chip { display: inline-flex; align-items: center; gap: 6px; }
+.sync-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--status-good); flex: none; }
+.sync-chip[data-state="warn"]::before { background: var(--status-warn); }
+.sync-chip[data-state="busy"]::before { background: var(--series-1); }
 select {
   font: inherit; font-size: 13px; color: var(--text-primary); cursor: pointer;
   background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
@@ -390,6 +395,7 @@ tbody tr:last-child td { border-bottom: 0; }
       <h1>Workout Tracker</h1>
       <span class="subtitle" id="range-label"></span>
       <span class="spacer"></span>
+      <button class="icon-btn sync-chip" id="native-sync" type="button" hidden></button>
       <a class="icon-btn" href="/api/history" style="text-decoration:none">Workouts →</a>
       <a class="icon-btn" href="/api/strength" style="text-decoration:none">Strength →</a>
       <a class="icon-btn" href="/api/recovery" style="text-decoration:none">Recovery →</a>
@@ -2152,6 +2158,42 @@ function init() {
 }
 
 init();
+
+/* Inside the native iOS app only: the app publishes its HealthKit sync status as
+   window.workoutSyncNative and fires "workout-sync-native" when it changes. The chip shows
+   it and opens the app's native sync screen. In a browser or the home-screen bookmark
+   there is no bridge and the chip stays hidden. */
+(function nativeSyncChip() {
+  const handler = window.webkit?.messageHandlers?.workoutSync;
+  const chip = document.getElementById("native-sync");
+  if (!handler || !chip) return;
+  const STALE_MS = 3 * DAY_MS;
+  function ago(iso) {
+    const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
+    if (!Number.isFinite(minutes)) return "unknown";
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    return `${Math.round(hours / 24)} d ago`;
+  }
+  function render() {
+    const s = window.workoutSyncNative;
+    if (!s) { chip.hidden = true; return; }
+    chip.hidden = false;
+    const stale = !s.lastSuccess || Date.now() - Date.parse(s.lastSuccess) > STALE_MS;
+    chip.dataset.state = s.syncing ? "busy" : s.failed || stale ? "warn" : "ok";
+    chip.textContent = s.syncing ? "Phone sync · syncing…"
+      : s.failed ? "Phone sync · failed"
+      : s.lastSuccess ? `Phone sync · ${ago(s.lastSuccess)}` : "Phone sync · not yet";
+    chip.title = s.lastResult || "";
+    chip.setAttribute("aria-label", `${chip.textContent}. Open sync settings`);
+  }
+  chip.addEventListener("click", () => handler.postMessage({ action: "openSync" }));
+  addEventListener("workout-sync-native", render);
+  setInterval(render, 60000);
+  render();
+})();
 </script>
 </body>
 </html>
