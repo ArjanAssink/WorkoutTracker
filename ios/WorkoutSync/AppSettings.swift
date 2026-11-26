@@ -3,7 +3,7 @@ import Foundation
 /// Where to post and with which key. Backlog item 5.
 /// The base URL is not secret (UserDefaults); the key is (Keychain).
 @MainActor
-final class Settings: ObservableObject {
+final class AppSettings: ObservableObject {
     @Published var baseURL: String
     @Published var apiKey: String
     @Published private(set) var testResult: String?

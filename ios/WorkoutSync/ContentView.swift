@@ -3,7 +3,7 @@ import SwiftUI
 /// Health permission and the last 10 workouts, read-only. Tap one for the JSON it would send.
 struct ContentView: View {
     @StateObject private var health = HealthStore()
-    @StateObject private var settings = Settings()
+    @StateObject private var settings = AppSettings()
     @State private var showingSettings = false
 
     var body: some View {

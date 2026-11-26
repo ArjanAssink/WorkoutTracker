@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var settings: Settings
+    @ObservedObject var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
