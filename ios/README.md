@@ -27,3 +27,11 @@ ignore it. "Debug session ended with code 9: killed" means the app was stopped f
 
 The free signing profile expires after 7 days and the app stops launching. Plug the phone
 in (or same Wi-Fi), open the project, press Run. Data already synced is unaffected.
+
+## Recording a workout (heart-rate strap)
+
+Heart button over the dashboard → pick the activity → the strap connects (first time: tap it in
+the list; Polar OH1: press its button until the light blinks) → Start. Lock the phone and put it
+away. Afterwards: End → Save to Health. Don't also record the session in Polar Flow, or the
+same class arrives twice (the backend's dedupe would merge them, but it's cleaner not to).
+Don't swipe the app away mid-session: that stops Bluetooth in the background.

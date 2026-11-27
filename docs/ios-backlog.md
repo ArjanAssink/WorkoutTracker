@@ -166,6 +166,36 @@ What `npm run sync` (export.xml) stores, and how the app now provides each:
 - Background wakes on new workouts, sleep and weight; every sync also sends the records.
 - Workouts synced before this build lack HR streams and routes: "Re-send the last 30 days" fixes that.
 
+### 13. Record a workout in the app, from a Bluetooth strap — written 2026-11-27
+Replaces Polar Flow for BJJ with the OH1. Polar Flow's Health sync writes the workout without
+heart-rate statistics and the readings as loose samples, which the backend has to join back by
+time. Recording here puts both on one workout, saved to Health by the app itself.
+- **Strap** (`HeartRateMonitor.swift`): CoreBluetooth, the standard Heart Rate service (0x180D),
+  so any strap works — OH1, H10, TICKR. Battery and device-info services are read when present.
+  The chosen strap is remembered; a dropout waits on a pending `connect` (no timeout, works in the
+  background), so the strap rejoins by itself. Connected only while the record screen is open or a
+  recording runs. Readings with "no skin contact" or outside 25–240 bpm are dropped
+  (`HeartRateMeasurement.swift`).
+- **Locked phone**: `UIBackgroundModes: bluetooth-central` (`ios/WorkoutSync/Info.plist`, merged
+  with the generated keys; no entitlement, so the free team should be fine — *inferred*). Bluetooth
+  state restoration lets iOS relaunch the app for the strap if it was evicted; not after a swipe-away.
+- **Recording** (`WorkoutRecorder.swift`): start and end in whole seconds (the id is derived from
+  them); every 15 readings and on backgrounding it is written to `Application Support/recording.json`.
+  Reopened within 30 min of the last write it carries on; later, it ends at its last reading and
+  waits for Save. End → review: change the activity, Save to Health, Resume, or Discard.
+- **Save**: `HKWorkoutBuilder` (works on iPhone from iOS 12; no watch, no iOS 26 session API) with
+  the strap as the `HKDevice`, every reading as an `HKQuantitySample` added to the builder, indoor.
+  Then the normal sync sends it. Health write access (Workouts, Heart Rate) is asked when the screen opens.
+- **Activities**: BJJ → Martial Arts, Capoeira → Tai Chi (what the watch records, so the relabels and
+  ids are unchanged), Strength, Other.
+- No active energy: the app has no calorie model. The backend scores by heart rate, so nothing is lost there.
+- UI: a heart button over the dashboard (bottom right) opens it; while a recording runs or waits for
+  Save, a bar there shows activity, time and bpm. Also from the sync screen.
+- *Done when:* a BJJ class recorded with the phone locked in a bag shows in Health as one Martial Arts
+  workout with average/max HR, and on the dashboard as BJJ with zones — not via Polar Flow.
+  Things to check on the phone: readings during the lock, a strap that goes out of range and back,
+  and whether Health shows HR statistics on the workout (if not, the backend still summarises the stream).
+
 ## Later (not MVP — pick by need)
 
 - **Source label.** The endpoint stamps pushes and notifications as "Health Auto Export". Let the

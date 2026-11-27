@@ -13,6 +13,7 @@ struct SyncView: View {
     @StateObject private var health = HealthStore()
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var sync: SyncEngine
+    @EnvironmentObject private var recorder: WorkoutRecorder
     @State private var showingSettings = false
 
     var body: some View {
@@ -49,6 +50,14 @@ struct SyncView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                }
+                Section {
+                    Button {
+                        openRecorder()
+                    } label: {
+                        Label(recorder.isBusy ? "Back to the recording" : "Record a workout with a heart-rate strap",
+                              systemImage: "heart.circle")
                     }
                 }
                 if let message = health.message {
@@ -89,6 +98,17 @@ struct SyncView: View {
             .sheet(isPresented: $showingSettings) { SettingsView(settings: settings) }
             .refreshable { await health.requestAccessAndLoad() }
             .task { await health.requestAccessAndLoad() }
+        }
+    }
+
+    /// The record screen covers the whole app, so this sheet goes first when it is one.
+    private func openRecorder() {
+        let show = { if recorder.isBusy { recorder.screenShown = true } else { recorder.open() } }
+        if let onDone {
+            onDone()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: show)
+        } else {
+            show()
         }
     }
 
@@ -158,4 +178,5 @@ private struct PayloadView: View {
     return SyncView()
         .environmentObject(settings)
         .environmentObject(SyncEngine(settings: settings))
+        .environmentObject(WorkoutRecorder(monitor: HeartRateMonitor(), sync: SyncEngine(settings: settings)))
 }

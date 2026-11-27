@@ -5,13 +5,27 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var bridge: WebBridge
+    @EnvironmentObject private var recorder: WorkoutRecorder
 
     var body: some View {
+        content
+            .fullScreenCover(isPresented: $recorder.screenShown) { RecordView() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if settings.isConfigured {
             DashboardWebView(bridge: bridge)
                 .ignoresSafeArea()
                 .overlay {
                     if let error = bridge.loadError { LoadFailed(message: error) }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if recorder.isBusy {
+                        RecordingBar().padding(.bottom, 8)
+                    } else {
+                        RecordButton().padding(20)
+                    }
                 }
                 .sheet(isPresented: $bridge.syncScreenRequested, onDismiss: bridge.loadIfNeeded) {
                     SyncView(onDone: { bridge.syncScreenRequested = false })
