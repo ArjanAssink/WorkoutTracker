@@ -158,14 +158,16 @@ final class SyncEngine: ObservableObject {
         var written: Int = 0
         var skipped: Int = 0
         var duplicatesMerged: Int = 0
+        var recordsReceived: Int = 0
 
-        enum CodingKeys: String, CodingKey { case written, skipped, duplicatesMerged }
+        enum CodingKeys: String, CodingKey { case written, skipped, duplicatesMerged, recordsReceived }
         init() {}
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             written = try c.decodeIfPresent(Int.self, forKey: .written) ?? 0
             skipped = try c.decodeIfPresent(Int.self, forKey: .skipped) ?? 0
             duplicatesMerged = try c.decodeIfPresent(Int.self, forKey: .duplicatesMerged) ?? 0
+            recordsReceived = try c.decodeIfPresent(Int.self, forKey: .recordsReceived) ?? 0
         }
     }
 
@@ -193,7 +195,13 @@ final class SyncEngine: ObservableObject {
             "records": records,
             "recordsWindow": ["from": WorkoutPayload.appleDate(from)],
         ])
-        _ = try await post(body)
+        let reply = try await post(body)
+        // A server that predates the records path answers 200 and ignores them; moving the
+        // window on would skip those days for good (seen right after a deploy, while some
+        // instances still ran the old code). Only a confirmed count moves it.
+        if !records.isEmpty && reply.recordsReceived != records.count {
+            throw HTTPError(status: 200, body: "server took \(reply.recordsReceived) of \(records.count) health records; will retry")
+        }
         defaults.set(Date(), forKey: Self.recordsDayKey)
         let days = calendar.dateComponents([.day], from: firstDay, to: today).day ?? 0
         return (days, records.count)
