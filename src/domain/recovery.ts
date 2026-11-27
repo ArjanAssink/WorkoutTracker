@@ -449,3 +449,21 @@ function combine(parts: RatingComponent[]): Rating {
   const score = Math.round(parts.reduce((n, p) => n + p.score * p.weight, 0) / weight);
   return { score, label: ratingLabel(score), components: parts.map((p) => ({ ...p, score: Math.round(p.score) })) };
 }
+
+/** What a typical night looked like over `days` — medians, each absent without data. */
+export function typicalNight(days: RecoveryDay[]) {
+  const med = (values: Array<number | undefined>): number | undefined => {
+    const v = values.filter((x): x is number => x !== undefined);
+    return v.length ? Math.round(median(v) * 10) / 10 : undefined;
+  };
+  return {
+    days: days.length,
+    asleepSeconds: med(days.map((d) => d.sleepAsleepSeconds)),
+    restingHeartRate: med(days.map((d) => d.restingHeartRate)),
+    hrv: med(days.map((d) => d.hrv)),
+    bedtimeMinutes: med(days.map((d) => d.bedtimeMinutes)),
+    wakeMinutes: med(days.map((d) => d.wakeMinutes)),
+    awakenings: med(days.map((d) => d.sleepAwakenings)),
+    respiratoryRate: med(days.map((d) => d.respiratoryRate)),
+  };
+}

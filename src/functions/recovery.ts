@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
 import { config } from "../config/index.js";
-import { BASELINE_DAYS, median, rateDay, rateWeek, weeklyRecovery, withBaselines, type Rating } from "../domain/recovery.js";
+import { BASELINE_DAYS, rateDay, rateWeek, typicalNight, weeklyRecovery, withBaselines, type Rating } from "../domain/recovery.js";
+import { LOAD_LEAD_IN_DAYS, READINESS_LEAD_IN_DAYS, readiness } from "../domain/readiness.js";
 import { RangeError_, resolveRange } from "../http/dateRange.js";
 import { isAuthorised } from "../http/auth.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
@@ -35,16 +36,7 @@ export async function recoveryData(request: HttpRequest, context: InvocationCont
     ]);
     const rated = withBaselines(allDays);
     const recent = allDays.filter((d) => d.date >= new Date(range.to.getTime() - TYPICAL_DAYS * 86_400_000).toISOString().slice(0, 10));
-    const typical = {
-      days: recent.length,
-      asleepSeconds: med(recent.map((d) => d.sleepAsleepSeconds)),
-      restingHeartRate: med(recent.map((d) => d.restingHeartRate)),
-      hrv: med(recent.map((d) => d.hrv)),
-      bedtimeMinutes: med(recent.map((d) => d.bedtimeMinutes)),
-      wakeMinutes: med(recent.map((d) => d.wakeMinutes)),
-      awakenings: med(recent.map((d) => d.sleepAwakenings)),
-      respiratoryRate: med(recent.map((d) => d.respiratoryRate)),
-    };
+    const typical = typicalNight(recent);
     // Ratings against the typical night of the range's end — "typical" is one quarter, not a moving target per day.
     const days = rated.filter((d) => d.date >= fromDate).map((d) => { const rating = rateDay(d, typical); return rating ? { ...d, rating } : d; });
     const weeks = weeklyRecovery(days, workouts, range.from, range.to).map((w) => {
@@ -62,9 +54,29 @@ export async function recoveryData(request: HttpRequest, context: InvocationCont
   }
 }
 
-function med(values: Array<number | undefined>): number | undefined {
-  const v = values.filter((x): x is number => x !== undefined);
-  return v.length ? Math.round(median(v) * 10) / 10 : undefined;
+/**
+ * `/api/recovery/readiness?asOf=YYYY-MM-DD` — the dashboard's "Today" card: the latest
+ * rated night against the 60 days before it, training load (acute:chronic), and the verdict
+ * that reads the two. Independent of any range; ratings use the same typical night as the
+ * Recovery page with a range ending today, so the two pages agree on the number.
+ */
+export async function readinessData(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const settings = config();
+  if (!isAuthorised(request, settings.ingestApiKey)) return unauthorised();
+  const asOfParam = new URL(request.url).searchParams.get("asOf");
+  if (asOfParam !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(asOfParam) || Number.isNaN(Date.parse(asOfParam)))) return badRequest("asOf must be YYYY-MM-DD");
+  const asOf = asOfParam ?? new Date().toISOString().slice(0, 10);
+  const day = (offset: number) => new Date(Date.parse(`${asOf}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
+  try {
+    const [days, workouts] = await Promise.all([
+      (await getRecoveryRepository()).list(day(-READINESS_LEAD_IN_DAYS), asOf),
+      (await getRepository()).listAll({ from: new Date(`${day(-LOAD_LEAD_IN_DAYS)}T00:00:00Z`), to: new Date(`${day(1)}T00:00:00Z`) }),
+    ]);
+    return ok(readiness(days, workouts, asOf));
+  } catch (error) {
+    context.error("Failed to build readiness", error);
+    return serverError("Failed to build readiness");
+  }
 }
 
 const PAGE_PATH = new URL("../../../public/recovery.html", import.meta.url);
@@ -86,4 +98,5 @@ export async function recoveryPage(_request: HttpRequest, context: InvocationCon
 }
 
 app.http("recoveryPage", { route: "api/recovery", methods: ["GET"], authLevel: "anonymous", handler: recoveryPage });
+app.http("readinessData", { route: "api/recovery/readiness", methods: ["GET"], authLevel: "anonymous", handler: readinessData });
 app.http("recoveryData", { route: "api/recovery/data", methods: ["GET"], authLevel: "anonymous", handler: recoveryData });

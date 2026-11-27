@@ -517,6 +517,32 @@ The weekly table's note gives the same-week correlation between effort and resti
 rate, and between effort and sleep. With a year of weeks it is a real number; under about
 0.3 either way it is noise, and it says so.
 
+
+### Readiness — the dashboard's "Today" card
+
+Two numbers side by side, and a verdict that reads both (`src/domain/readiness.ts`,
+`GET /api/recovery/readiness?asOf=YYYY-MM-DD`). They stay separate on purpose, the same
+way Whoop keeps Recovery apart from Strain: HRV and resting heart rate already react to hard
+training, so adding load into the recovery score would count it twice.
+
+- **Recovery**: the latest rated night (the rating above, against the same 90-day typical
+  night as the Recovery page with a range ending today), compared with the ratings of the
+  60 days before it. **Above / about / below your usual** at ±0.5 standard deviations, with
+  the spread floored at 6 points so a flat history doesn't turn a 2-point move into
+  "above". There is no band with under 14 nights of history. A rating more than 2 days old
+  is shown but marked stale, and the verdict ignores it.
+- **Training load**: acute:chronic ratio, the 7-day exponentially weighted average of daily
+  effort over the 42-day one (ATL/CTL, seeded over 180 days). Bands are Gabbett's: **under
+  0.8 fresh · 0.8–1.3 balanced · 1.3–1.5 building · over 1.5 spiking**. No ratio with
+  fewer than 10 training days in the last 42.
+- **Verdict**: one rule per cell of recovery × load (for example, below + building → "Ease
+  off"; above + balanced → "Good day to push"; anything + spiking → "Hold back"). A
+  respiratory-rate or wrist-temperature component under 50 overrides everything with the
+  illness caution. With no usable night, the verdict rests on load alone. Every verdict
+  lists the facts it rests on.
+
+Change the thresholds here and in the code together.
+
 ## Routes
 
 Walks, rides, runs and hikes carry a GPS track; the export ships them as one GPX file per

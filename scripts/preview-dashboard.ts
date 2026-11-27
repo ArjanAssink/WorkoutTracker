@@ -24,6 +24,8 @@ import { resolveWindow } from "../src/functions/getWeekly.js";
 
 import { assets, getAppVersion } from "../src/functions/appAssets.js";
 import { weekRecovery } from "../src/domain/weekRecovery.js";
+import { readiness } from "../src/domain/readiness.js";
+import type { RecoveryDay } from "../src/domain/recovery.js";
 import { parseWeekAnnotation, type WeekAnnotation } from "../src/domain/weekAnnotation.js";
 import { composeWeeklySummary } from "../src/domain/weeklySummary.js";
 import { composeCheckIn } from "../src/domain/milestones.js";
@@ -123,6 +125,35 @@ function generate(): Workout[] {
 }
 
 const ALL = generate();
+
+/**
+ * Half a year of nights: sleep, HRV and resting heart rate wobbling around a baseline, with
+ * hard days showing the next morning (lower HRV, higher resting HR) so the card has
+ * something real to read. Rated by the real `readiness`.
+ */
+function generateNights(): RecoveryDay[] {
+  const random = mulberry32(20261127);
+  const effortByDay = new Map<string, number>();
+  for (const w of ALL) effortByDay.set(w.startedAt.slice(0, 10), (effortByDay.get(w.startedAt.slice(0, 10)) ?? 0) + w.effort);
+  const out: RecoveryDay[] = [];
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+  for (let i = 200; i >= 0; i--) {
+    const date = new Date(today.getTime() - i * 86_400_000).toISOString().slice(0, 10);
+    const yesterday = new Date(today.getTime() - (i + 1) * 86_400_000).toISOString().slice(0, 10);
+    const strain = Math.min(1.5, (effortByDay.get(yesterday) ?? 0) / 150);
+    if (random() < 0.06) continue; // a night the watch was charging
+    out.push({
+      date, source: "health-auto-export", recordedAt: `${date}T07:00:00Z`,
+      sleepAsleepSeconds: Math.round((7.1 + (random() - 0.5) * 1.6) * 3600),
+      sleepAwakenings: Math.floor(random() * 4),
+      restingHeartRate: Math.round((52 + strain * 2.5 + (random() - 0.5) * 3) * 10) / 10,
+      hrv: Math.round(58 - strain * 8 + (random() - 0.5) * 14),
+      respiratoryRate: Math.round((14.5 + (random() - 0.5)) * 10) / 10,
+    });
+  }
+  return out;
+}
+const NIGHTS = generateNights();
 
 /** A slow downward drift with daily noise and a few skipped days. */
 const WEIGHTS = (() => {
@@ -226,6 +257,10 @@ createServer(async (request, response) => {
     return !activity || w.activityType === normaliseActivityType(activity);
   });
 
+  if (url.pathname === "/api/recovery/readiness") {
+    const asOf = url.searchParams.get("asOf") ?? new Date().toISOString().slice(0, 10);
+    return json(200, readiness(NIGHTS, ALL, asOf));
+  }
   if (url.pathname === "/api/bodyweight") {
     const r = resolveRange(url.searchParams);
     const a = r.from.toISOString().slice(0, 10), b = r.to.toISOString().slice(0, 10);

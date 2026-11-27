@@ -137,7 +137,11 @@ against every other, and relabelling a slug changes identity.
    not a real payload — verify against the first batch that carries sleep. The **recovery
    rating** (`rateDay`/`rateWeek`) is a weighted score against personal baselines with the
    breakdown attached; weights and scales are in README "The recovery rating" — change
-   them there and in the code together.
+   them there and in the code together. **Readiness** (dashboard "Today" card, `/api/recovery/readiness`,
+   `domain/readiness.ts`, added 2026-11-27): the rating as above/usual/below your previous
+   60 nights, acute:chronic load (7/42-day EWMA of effort), and a verdict per recovery×load
+   cell — never one blended score. README "Readiness". Open: thresholds are textbook
+   (Gabbett, ±0.5 sd), not yet checked against the person's own history.
 3. **Public repo** — scrubbed on 2026-10-11: history restarted from a single root commit
    (the old history is on the local, never-pushed branch `private-history`), deployment
    names moved to `.env`, the person's numbers taken out of the docs. Keep it that way:
