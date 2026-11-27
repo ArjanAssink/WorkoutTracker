@@ -253,7 +253,7 @@ extension HeartRateMonitor: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didConnect p: CBPeripheral) {
         MainActor.assumeIsolated {
             guard p.identifier == peripheral?.identifier else { return }
-            if strap?.identifier != p.identifier {
+            if strap?.identifier != p.identifier.uuidString {
                 strap = StrapInfo(identifier: p.identifier.uuidString, name: p.name)
             }
             status = .connected(displayName(p))
