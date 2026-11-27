@@ -93,16 +93,8 @@ final class WorkoutRecorder: ObservableObject {
     private let store = HKHealthStore()
     private var unsaved = 0
     private var backgroundWatch: NSObjectProtocol?
-    private var goneAlertScheduled = false
 
     private static let activityKey = "recordActivity"
-    /// Reopened within this long after the last write, an unfinished recording carries on;
-    /// later, it ends at its last reading and waits for Save.
-    private static let resumeWindow: TimeInterval = 30 * 60
-    /// No reading for this long while recording means the strap was switched off (or left
-    /// behind): the workout ends at its last reading. Shorter gaps are dropouts and carry on.
-    static let strapGoneLimit: TimeInterval = 10 * 60
-    private static let goneAlertID = "strap-gone"
     private static let startAlertID = "recording-started"
 
     private static var file: URL {
@@ -116,7 +108,6 @@ final class WorkoutRecorder: ObservableObject {
         self.sync = sync
         activity = UserDefaults.standard.string(forKey: Self.activityKey).flatMap(RecordedActivity.init) ?? .bjj
         monitor.onReading = { [weak self] date, bpm in self?.add(date, bpm) }
-        monitor.onConnectionChange = { [weak self] connected in self?.strapConnection(connected) }
         restore()
         if phase == .recording { monitor.activate() }
         // Locking the phone is the usual way a session continues; write before iOS may evict.
@@ -153,8 +144,10 @@ final class WorkoutRecorder: ObservableObject {
         recording = Recording(activity: activity, start: begin, strap: monitor.strap)
         phase = .recording
         persist()
-        requestNotifications()
-        if begin > now { notifyStart(at: begin) }
+        if begin > now {
+            requestNotifications()
+            notifyStart(at: begin)
+        }
     }
 
     /// Class started early: the clock starts now instead of at the set time.
@@ -166,8 +159,12 @@ final class WorkoutRecorder: ObservableObject {
         persist()
     }
 
-    func end() {
-        end(at: Self.wholeSecond(Date()))
+    /// Only ever called from the screen: a recording never ends by itself, however long the
+    /// strap is out of range. `atLastReading` ends it when the strap last spoke — for when
+    /// it was switched off well before the phone came out of the bag.
+    func end(atLastReading: Bool = false) {
+        let last = recording?.lastSample
+        end(at: Self.wholeSecond(atLastReading ? (last ?? Date()) : Date()))
     }
 
     private func end(at date: Date) {
@@ -175,24 +172,8 @@ final class WorkoutRecorder: ObservableObject {
         rec.end = max(date, rec.start.addingTimeInterval(1))
         recording = rec
         phase = .review
-        cancelAlert(Self.goneAlertID)
         cancelAlert(Self.startAlertID)
-        goneAlertScheduled = false
         persist()
-    }
-
-    /// Run when the app comes to the front. A strap that has been silent for
-    /// `strapGoneLimit` was switched off at the end of class: end at its last reading, so
-    /// turning the strap off is all it takes, and the phone only has to be opened to Save.
-    func checkStrapGone(now: Date = Date()) {
-        guard phase == .recording, let rec = recording, !rec.waiting(at: now) else { return }
-        if case .connected = monitor.status, let seen = monitor.lastReading,
-           now.timeIntervalSince(seen) < Self.strapGoneLimit { return }
-        let last = rec.lastSample ?? rec.start
-        guard now.timeIntervalSince(last) >= Self.strapGoneLimit else { return }
-        end(at: Self.wholeSecond(last))
-        message = "The strap went quiet at \(last.formatted(date: .omitted, time: .shortened)); the workout ends there. Resume if that was a dropout."
-        screenShown = true
     }
 
     /// An End tapped by mistake: carry on, the gap included.
@@ -211,9 +192,7 @@ final class WorkoutRecorder: ObservableObject {
     }
 
     func discard() {
-        cancelAlert(Self.goneAlertID)
         cancelAlert(Self.startAlertID)
-        goneAlertScheduled = false
         try? FileManager.default.removeItem(at: Self.file)
         recording = nil
         phase = .idle
@@ -248,10 +227,6 @@ final class WorkoutRecorder: ObservableObject {
         if rec.strap == nil { rec.strap = monitor.strap }
         let offset = date.timeIntervalSince(rec.start)
         guard offset >= 0 else { return }
-        if goneAlertScheduled {
-            cancelAlert(Self.goneAlertID)
-            goneAlertScheduled = false
-        }
         rec.offsets.append(offset)
         rec.bpm.append(bpm)
         recording = rec
@@ -276,21 +251,11 @@ final class WorkoutRecorder: ObservableObject {
 
     private func restore() {
         guard let data = try? Data(contentsOf: Self.file),
-              var rec = try? JSONDecoder().decode(Recording.self, from: data) else { return }
-        if rec.end == nil {
-            let last = max(rec.lastWrite ?? rec.lastSample ?? rec.start, rec.start)
-            if Date().timeIntervalSince(last) < Self.resumeWindow {
-                recording = rec
-                phase = .recording
-                return
-            }
-            rec.end = Self.wholeSecond(max(rec.lastSample ?? rec.start, rec.start.addingTimeInterval(1)))
-            message = "This recording was interrupted; it ends at its last heart-rate reading."
-        }
+              let rec = try? JSONDecoder().decode(Recording.self, from: data) else { return }
+        // Unfinished stays unfinished, however long ago: only End on the screen ends it.
         recording = rec
         activity = rec.activity
-        phase = .review
-        persist()
+        phase = rec.end == nil ? .recording : .review
     }
 
     private func requestWriteAccess() async {
@@ -306,24 +271,10 @@ final class WorkoutRecorder: ObservableObject {
 
     // MARK: notifications
 
-    /// The strap dropped while recording: if it stays away for the limit, say so on the lock
-    /// screen. A reading in the meantime withdraws it.
-    private func strapConnection(_ connected: Bool) {
-        guard phase == .recording, let rec = recording, !rec.waiting() else { return }
-        if connected { return }
-        guard !goneAlertScheduled else { return }
-        goneAlertScheduled = true
-        let content = UNMutableNotificationContent()
-        content.title = "\(rec.activity.label): strap disconnected"
-        content.body = "No heart rate for \(Int(Self.strapGoneLimit / 60)) minutes. Open the app to save the workout; it ends at the last reading."
-        content.sound = .default
-        schedule(Self.goneAlertID, content, after: Self.strapGoneLimit)
-    }
-
     private func notifyStart(at date: Date) {
         let content = UNMutableNotificationContent()
         content.title = "\(activity.label) recording started"
-        content.body = "Recording since \(date.formatted(date: .omitted, time: .shortened)). Switch the strap off when you're done."
+        content.body = "Recording since \(date.formatted(date: .omitted, time: .shortened)). End it in the app when you're done."
         schedule(Self.startAlertID, content, after: date.timeIntervalSinceNow)
     }
 

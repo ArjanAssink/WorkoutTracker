@@ -88,7 +88,7 @@ private struct SetupView: View {
                 .disabled(!connected)
             } footer: {
                 Text(connected
-                     ? "Lock the phone and put it away. Readings keep coming in, and a dropout reconnects by itself. When you're done, switch the strap off: after \(Int(WorkoutRecorder.strapGoneLimit / 60)) quiet minutes the workout ends at its last reading, and a notification takes you to Save."
+                     ? "Lock the phone and put it away. Readings keep coming in, and a dropout reconnects by itself. It keeps recording until you tap End here, however long the strap is out of range."
                      : "Start is available once the strap is connected.")
             }
         }
@@ -268,7 +268,12 @@ private struct LiveView: View {
                     Button("Cancel workout", role: .destructive, action: recorder.discard)
                     Button("Keep waiting", role: .cancel) {}
                 } else {
-                    Button("End workout", role: .destructive, action: recorder.end)
+                    Button("End now", role: .destructive) { recorder.end() }
+                    if let last = recorder.recording?.lastSample, Date().timeIntervalSince(last) > 120 {
+                        Button("End at last reading (\(last.formatted(date: .omitted, time: .shortened)))", role: .destructive) {
+                            recorder.end(atLastReading: true)
+                        }
+                    }
                     Button("Keep recording", role: .cancel) {}
                 }
             }

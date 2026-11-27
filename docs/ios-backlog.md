@@ -180,9 +180,8 @@ time. Recording here puts both on one workout, saved to Health by the app itself
   with the generated keys; no entitlement, so the free team should be fine — *inferred*). Bluetooth
   state restoration lets iOS relaunch the app for the strap if it was evicted; not after a swipe-away.
 - **Recording** (`WorkoutRecorder.swift`): start and end in whole seconds (the id is derived from
-  them); every 15 readings and on backgrounding it is written to `Application Support/recording.json`.
-  Reopened within 30 min of the last write it carries on; later, it ends at its last reading and
-  waits for Save. End → review: change the activity, Save to Health, Resume, or Discard.
+  them); every 15 readings and on backgrounding it is written to `Application Support/recording.json`,
+  and picked up from there after a crash or eviction. End → review: change the activity, Save to Health, Resume, or Discard.
 - **Save**: `HKWorkoutBuilder` (works on iPhone from iOS 12; no watch, no iOS 26 session API) with
   the strap as the `HKDevice`, every reading as an `HKQuantitySample` added to the builder, indoor.
   Then the normal sync sends it. Health write access (Workouts, Heart Rate) is asked when the screen opens.
@@ -192,10 +191,10 @@ time. Recording here puts both on one workout, saved to Health by the app itself
   next :00/:30 at least 5 min away), so the strap goes on while changing and only class counts. The
   screen counts down with the strap live; "Start now" if class begins early; a quiet notification
   when it starts. Readings before the start are dropped.
-- **Ending by switching the strap off**: the strap dropping while recording schedules a notification
-  for 10 min later (withdrawn by the next reading). Opening the app after 10 silent minutes ends the
-  workout at its last reading and opens Save, with Resume for a dropout. *Inferred:* the OH1 drops the
-  BLE link when switched off; a lazy end on open, because a suspended app cannot run a timer.
+- **A recording never ends by itself** (user's rule, 2026-11-27): the strap can be out of range for a
+  long time, so no silence limit, no auto-end, and an unfinished recording found at launch always
+  carries on. End is only on the screen: "End now", or "End at last reading (HH:MM)" when the strap
+  has been quiet for 2+ minutes — for a strap switched off before the phone came out of the bag.
 - No active energy: the app has no calorie model. The backend scores by heart rate, so nothing is lost there.
 - UI: a heart button over the dashboard (bottom right) opens it; while a recording runs or waits for
   Save, a bar there shows activity, time and bpm. Also from the sync screen.
