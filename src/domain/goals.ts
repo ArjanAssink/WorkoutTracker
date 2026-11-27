@@ -142,7 +142,7 @@ export interface WeeklyReport {
   weeks: WeekReview[];
   /** The most recent complete week — what a Monday summary is about. */
   current: WeekReview | undefined;
-  /** Typical week over the preceding weeks, excluding `current`. */
+  /** Typical week over the (up to) twelve weeks before `current`, from `comparisonFrom` on. */
   baseline: Baseline | undefined;
   /** Consecutive weeks up to and including `current` that were good or perfect. */
   streakWeeks: number;
@@ -156,6 +156,13 @@ export interface ReviewOptions {
    * no "typical" to compare against.
    */
   leadInWeeks?: number;
+  /**
+   * First day the "typical week" may draw on (YYYY-MM-DD). Weeks from then on are compared
+   * only with weeks from then on — for a break in what was recorded, such as an activity
+   * that went unlogged for months: a median over weeks missing it makes every week since
+   * look like more. Weeks before it keep comparing among themselves.
+   */
+  comparisonFrom?: string;
 }
 
 /** Evaluates each ISO week in the range against the goals. */
@@ -195,8 +202,13 @@ export function reviewWeeks(
 
   // Rolling comparison over everything evaluated, lead-in included, so the table can say
   // of any week how it stood against the ones before it — not only the latest.
-  all.forEach((review, i) => {
+  const floor = options.comparisonFrom ? isoDay(startOfIsoWeek(new Date(`${options.comparisonFrom}T12:00:00Z`))) : undefined;
+  const priorOf = (i: number) => {
     const prior = all.slice(Math.max(0, i - TYPICAL_WINDOW_WEEKS), i);
+    return floor && all[i]!.weekStart >= floor ? prior.filter((w) => w.weekStart >= floor) : prior;
+  };
+  all.forEach((review, i) => {
+    const prior = priorOf(i);
     if (prior.length < MIN_WEEKS_FOR_TYPICAL) return;
     const typical = Math.round(median(prior.map((w) => w.effort)) * 10) / 10;
     review.typicalEffort = typical;
@@ -206,7 +218,9 @@ export function reviewWeeks(
   // Only the requested window is returned; the lead-in has done its job.
   const reviews = all.filter((w) => w.weekStart >= firstVisible);
   const current = reviews[reviews.length - 1];
-  const prior = reviews.slice(0, -1);
+  // The same window as the rolling comparison — the twelve weeks before, lead-in included —
+  // never the whole requested range: a year-wide dashboard would otherwise call a year ago typical.
+  const prior = current ? priorOf(all.indexOf(current)) : [];
 
   return {
     spec: current ? specFor(goals, current.weekStart) : currentSpec(goals),
@@ -268,7 +282,7 @@ function toReview(
  * fortnight off would drag an average somewhere unrepresentative.
  */
 function baselineOf(weeks: WeekReview[]): Baseline | undefined {
-  if (weeks.length === 0) return undefined;
+  if (weeks.length < MIN_WEEKS_FOR_TYPICAL) return undefined;
   return {
     weeks: weeks.length,
     medianSessions: median(weeks.map((w) => w.totalSessions)),
@@ -296,4 +310,15 @@ export function median(values: number[]): number {
 
 function isoDay(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/** Body of `POST /api/weekly/comparison`: `{ from: "YYYY-MM-DD" }`, or `{ from: null }` to clear. */
+export function parseComparisonFrom(body: unknown): string | null {
+  if (!body || typeof body !== "object" || !("from" in body)) throw new Error("Send { from: \"YYYY-MM-DD\" }, or { from: null } to clear it.");
+  const from = (body as { from: unknown }).from;
+  if (from === null || from === "") return null;
+  if (typeof from !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(from) || new Date(`${from}T00:00:00Z`).toISOString().slice(0, 10) !== from) {
+    throw new Error("from must be a date in YYYY-MM-DD format.");
+  }
+  return from;
 }

@@ -8,6 +8,7 @@ import { json, ok, unauthorised } from "../http/responses.js";
 import { resolveWindow } from "./getWeekly.js";
 import { notify } from "./notifications.js";
 import { getRepository, getSettingsRepository } from "./shared.js";
+import { readComparisonFrom } from "./weeklyComparison.js";
 
 /**
  * The Monday-morning summary, delivered to Telegram and kept as a notification.
@@ -32,12 +33,14 @@ export async function buildSummary(now: Date): Promise<{ text: string; weekStart
   const repository = await getRepository();
   const historyFrom = resolveWindow(null, REST_HISTORY_WEEKS, now).from!;
   const leadIn = new Date(historyFrom.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
-  const [workouts, annotations] = await Promise.all([
+  const [workouts, annotations, comparisonFrom] = await Promise.all([
     repository.listAll({ from: leadIn, to }),
     (await getSettingsRepository()).datedRange<import("../domain/weekAnnotation.js").WeekAnnotation>("week.annotation.", historyFrom.toISOString().slice(0, 10), new Date(to.getTime() + 7 * 86400000).toISOString().slice(0, 10)),
+    readComparisonFrom(),
   ]);
-  const report = reviewWeeks(workouts, settings.goalSchedule, from!, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
-  const history = reviewWeeks(workouts, settings.goalSchedule, historyFrom, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+  const options = { leadInWeeks: TYPICAL_WINDOW_WEEKS, ...(comparisonFrom ? { comparisonFrom } : {}) };
+  const report = reviewWeeks(workouts, settings.goalSchedule, from!, to, options);
+  const history = reviewWeeks(workouts, settings.goalSchedule, historyFrom, to, options);
   const thisWeek = annotations[to.toISOString().slice(0, 10)];
   let text = composeWeeklySummary(report, { weeks: history.weeks, annotations });
   if (isRestWeekLabel(thisWeek) && thisWeek) text += ["", "", "😴 <b>This week: rest / recovery</b>", ...restWeekFocus(thisWeek)].join("\n");

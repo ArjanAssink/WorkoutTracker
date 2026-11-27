@@ -477,6 +477,8 @@ tbody tr:last-child td { border-bottom: 0; }
         <p class="note">For this week: solid tick = usual effort by this weekday/time; dotted extension = estimated finish if your usual remaining pattern repeats. The outline is recorded effort, not a forecast.</p>
         <p class="note" id="recovery-count"></p>
         <p class="note" id="effort-band-legend">Effort labels: 😴 recovery-level ≤60% · 🌿 lighter &gt;60% and &lt;90% · ⚖️ usual 90–110% · 🔥 above usual &gt;110%. Compared with the preceding 12-week median; independent of goals and manual tags.</p>
+        <form class="note" id="comparison-form">Typical weeks only count from <input type="date" id="comparison-from" aria-describedby="comparison-help"> <button type="submit">Save</button> <button type="button" id="comparison-clear">No limit</button> <span id="comparison-status" role="status"></span>
+          <span id="comparison-help" style="display:block">Set this where what you record changed — e.g. an activity that went unlogged for months — so later weeks are not compared with weeks missing it.</span></form>
       </section>
       <div id="goal-table"></div>
       <div id="goal-list" class="goal-list"></div>
@@ -1292,6 +1294,8 @@ function renderGoals() {
   const head = document.getElementById("goal-head");
   const strip = document.getElementById("goal-strip");
   const table = document.getElementById("goal-table");
+  const comparisonInput = document.getElementById("comparison-from");
+  if (document.activeElement !== comparisonInput) comparisonInput.value = report?.comparisonFrom ?? "";
   if (!report || !report.weeks?.length) {
     spec.textContent = ""; head.replaceChildren(); strip.replaceChildren(); table.replaceChildren();
     document.getElementById("recovery-chart").replaceChildren(); document.getElementById("recovery-count").textContent = "";
@@ -1505,6 +1509,19 @@ async function saveWeekLabel(remove = false) {
   } catch (e) { error.textContent = e.message; error.hidden = false; }
   finally { for (const id of ["week-save", "week-remove"]) document.getElementById(id).disabled = false; }
 }
+async function saveComparisonFrom(from) {
+  const status = document.getElementById("comparison-status");
+  status.textContent = "Saving…";
+  try {
+    const response = await fetch("/api/weekly/comparison", { method: "POST", headers: { "x-api-key": state.key, "content-type": "application/json" }, body: JSON.stringify({ from }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Could not save. Please try again.");
+    state.weekly = await api("/api/weekly", { weeks: state.weekly.weeks.length, until: state.to ?? "today" });
+    renderGoals(); status.textContent = "Saved.";
+  } catch (e) { status.textContent = e.message; }
+}
+document.getElementById("comparison-form").addEventListener("submit", (e) => { e.preventDefault(); saveComparisonFrom(document.getElementById("comparison-from").value || null); });
+document.getElementById("comparison-clear").addEventListener("click", () => { document.getElementById("comparison-from").value = ""; saveComparisonFrom(null); });
 document.getElementById("week-editor-form").addEventListener("submit", (e) => { e.preventDefault(); saveWeekLabel(); });
 document.getElementById("week-remove").addEventListener("click", () => saveWeekLabel(true));
 document.getElementById("week-cancel").addEventListener("click", () => document.getElementById("week-editor").close());

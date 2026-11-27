@@ -250,6 +250,16 @@ behind the first returned week are evaluated too (but not returned), so every ro
 comparison; only when your history itself holds fewer than four prior weeks is none made,
 since a median of two numbers is not a baseline.
 
+The headline "typical" sessions and duration use the same twelve weeks — not the whole range
+on screen, or a year-wide view would call a year ago typical.
+
+When what gets *recorded* changes — an activity that went unlogged for months and is logged
+again — set a comparison start (the date field under the recovery chart, or
+`POST /api/weekly/comparison` with `{ "from": "YYYY-MM-DD" }`; `null` clears it; stored in
+`settings` as `weekly.comparisonFrom`). Weeks from that Monday on compare only with weeks
+from then on, so the first four after it show no typical; earlier weeks keep comparing among
+themselves. The pace projection and the Telegram texts honour it too.
+
 ### The Monday 10:00 message
 
 A timer sends last week's review to Telegram every Monday at 10:00 Amsterdam time. Flex

@@ -10,6 +10,7 @@ import { isAuthorised } from "../http/auth.js";
 import { json, ok, unauthorised } from "../http/responses.js";
 import { notify } from "./notifications.js";
 import { getMilestoneRepository, getRepository, getSettingsRepository } from "./shared.js";
+import { readComparisonFrom } from "./weeklyComparison.js";
 
 /**
  * Messages between the Monday summaries.
@@ -53,8 +54,8 @@ export async function evaluateMilestones(arrived: Workout[], now: Date): Promise
   }
 
   const from = new Date(weekStart.getTime() - LOOKBACK_WEEKS * WEEK_MS);
-  const history = await (await getRepository()).listAll({ from, to: weekEnd });
-  const report = reviewWeeks(history, settings.goalSchedule, from, weekEnd);
+  const [history, comparisonFrom] = await Promise.all([(await getRepository()).listAll({ from, to: weekEnd }), readComparisonFrom()]);
+  const report = reviewWeeks(history, settings.goalSchedule, from, weekEnd, comparisonFrom ? { comparisonFrom } : {});
   const found = detectMilestones({
     spec: specFor(settings.goalSchedule, weekKey), profile: settings.profile, weeks: report.weeks, streakWeeks: report.streakWeeks,
     history, arrived: touched, timeZone: TIMEZONE,
@@ -111,8 +112,8 @@ export async function buildCheckIn(now: Date): Promise<{ text: string | undefine
   const weekStart = startOfIsoWeek(now);
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const from = new Date(weekStart.getTime() - TYPICAL_WINDOW_WEEKS * WEEK_MS);
-  const history = await (await getRepository()).listAll({ from, to: weekEnd });
-  const report = reviewWeeks(history, settings.goalSchedule, from, weekEnd);
+  const [history, comparisonFrom] = await Promise.all([(await getRepository()).listAll({ from, to: weekEnd }), readComparisonFrom()]);
+  const report = reviewWeeks(history, settings.goalSchedule, from, weekEnd, comparisonFrom ? { comparisonFrom } : {});
   const week = report.current;
   const weekKey = weekStart.toISOString().slice(0, 10);
   if (!week) return { text: undefined, weekStart: weekKey };

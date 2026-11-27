@@ -44,6 +44,8 @@ export function weekPace(
   annotation?: WeekAnnotation,
   /** Activities the week's spec leaves out of the session totals. */
   excludeFromCount: readonly string[] = [],
+  /** As `ReviewOptions.comparisonFrom`: weeks before it are not part of "usual". */
+  comparisonFrom?: string,
 ): WeekPace | undefined {
   const excluded = new Set(excludeFromCount);
   const localNow = localTime(now.toISOString());
@@ -51,6 +53,8 @@ export function weekPace(
   const monday = startOfIsoWeek(new Date(`${localNow.date}T12:00:00Z`)).getTime();
   if (new Date(monday).toISOString().slice(0, 10) !== week.weekStart) return undefined;
   const cutoff = localNow.wall - monday;
+  const floorDay = comparisonFrom ? startOfIsoWeek(new Date(`${comparisonFrom}T12:00:00Z`)).getTime() : -Infinity;
+  const floor = monday >= floorDay ? floorDay : -Infinity;
   const history = new Map<number, Bucket>();
   let firstRecorded = Infinity;
   for (const workout of workouts) {
@@ -69,7 +73,7 @@ export function weekPace(
   }
   const weeks: Bucket[] = [];
   for (let key = monday - 12 * WEEK; key < monday; key += WEEK) {
-    if (key >= firstRecorded) weeks.push(history.get(key) ?? empty());
+    if (key >= firstRecorded && key >= floor) weeks.push(history.get(key) ?? empty());
   }
   if (weeks.length < 4) return undefined;
   const typicalTotal = median(weeks.map((w) => w.total));

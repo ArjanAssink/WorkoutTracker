@@ -291,7 +291,10 @@ malformed envelope still returns 400. Keep that asymmetry.
   The observed max must be within 25 bpm of the fallback to be trusted — a sparse early year
   of easy sessions "observed" 108 bpm and would have made every moderate workout maximal.
 - **`typicalEffort` is per week, against the twelve before it**, not the request window;
-  absent under four prior weeks. The dashboard and the Telegram line both read it.
+  absent under four prior weeks. The dashboard and the Telegram line both read it. So is
+  `report.baseline` (headline typical sessions/duration). `weekly.comparisonFrom` in
+  `settings` (`/api/weekly/comparison`) cuts the window at a recording break (an activity
+  unlogged for months); every `reviewWeeks`/`weekPace` caller must pass it.
 - **The export parser joins loose heart-rate samples to workouts lacking statistics.**
   Polar/Strava workouts carry none; the samples are separate `<Record>`s, all of which
   precede the `<Workout>`s in the file. `HeartRateIndex` buffers them (~16 MB per million)

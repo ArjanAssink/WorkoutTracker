@@ -7,6 +7,7 @@ import { startOfIsoWeek } from "../domain/summary.js";
 import { isAuthorised } from "../http/auth.js";
 import { badRequest, ok, serverError, unauthorised } from "../http/responses.js";
 import { getRepository, getSettingsRepository } from "./shared.js";
+import { readComparisonFrom } from "./weeklyComparison.js";
 
 /**
  * `GET /api/weekly?weeks=12&until=YYYY-MM-DD`
@@ -42,10 +43,10 @@ export async function getWeekly(request: HttpRequest, context: InvocationContext
     // Load the comparison window behind the first week as well, so every returned week
     // has a "typical" to stand against.
     const leadIn = new Date(from.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
-    const workouts = await repository.listAll({ from: leadIn, to });
-    const report = reviewWeeks(workouts, settings.goalSchedule, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
+    const [workouts, comparisonFrom] = await Promise.all([repository.listAll({ from: leadIn, to }), readComparisonFrom()]);
+    const report = reviewWeeks(workouts, settings.goalSchedule, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS, ...(comparisonFrom ? { comparisonFrom } : {}) });
     const annotations = await (await getSettingsRepository()).datedRange<{ label: string; note: string }>("week.annotation.", from.toISOString().slice(0, 10), to.toISOString().slice(0, 10));
-    return ok({ ...report, weeks: report.weeks.map((week) => { const pace = weekPace(workouts, week, now, annotations[week.weekStart], specFor(settings.goalSchedule, week.weekStart).excludeFromCount), outlook = weekOutlook(week, pace); return { ...week, recovery: weekRecovery(week, annotations[week.weekStart], now), pace, ...(outlook ? { outlook } : {}), ...(annotations[week.weekStart] ? { annotation: annotations[week.weekStart] } : {}) }; }) });
+    return ok({ ...report, comparisonFrom: comparisonFrom ?? null, weeks: report.weeks.map((week) => { const pace = weekPace(workouts, week, now, annotations[week.weekStart], specFor(settings.goalSchedule, week.weekStart).excludeFromCount, comparisonFrom), outlook = weekOutlook(week, pace); return { ...week, recovery: weekRecovery(week, annotations[week.weekStart], now), pace, ...(outlook ? { outlook } : {}), ...(annotations[week.weekStart] ? { annotation: annotations[week.weekStart] } : {}) }; }) });
   } catch (error) {
     context.error("Failed to build weekly review", error);
     return serverError("Failed to build weekly review");

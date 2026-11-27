@@ -19,7 +19,7 @@ import { buildWorkout, type Workout, type WorkoutInput } from "../src/domain/wor
 import { buildSeries, decodeSeries, encodeSeries } from "../src/domain/heartRateSeries.js";
 import { parseTagUpdate } from "../src/domain/tags.js";
 import { resolveRange } from "../src/http/dateRange.js";
-import { DEFAULT_GOALS, reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../src/domain/goals.js";
+import { DEFAULT_GOALS, parseComparisonFrom, reviewWeeks, TYPICAL_WINDOW_WEEKS } from "../src/domain/goals.js";
 import { resolveWindow } from "../src/functions/getWeekly.js";
 
 import { assets, getAppVersion } from "../src/functions/appAssets.js";
@@ -31,6 +31,7 @@ import { advanceReadMarker, NOTIFICATION_ID, notificationId, presentNotification
 
 // Preview labels are deliberately temporary; the Function API persists real labels.
 const annotations = new Map<string, WeekAnnotation>();
+let comparisonFrom: string | undefined;
 const tags = new Map<string, string[]>();
 /** Heart rate over each synthetic workout, by id — the preview's `heartrate` table. */
 const SERIES = new Map<string, string>();
@@ -195,6 +196,16 @@ createServer(async (request, response) => {
 
   if (request.headers["x-api-key"] !== KEY) return json(401, { error: "Invalid or missing API key" });
 
+  if (url.pathname === "/api/weekly/comparison") {
+    if (request.method === "GET") return json(200, { from: comparisonFrom ?? null });
+    try {
+      let body = "";
+      for await (const chunk of request) body += chunk.toString();
+      const from = parseComparisonFrom(JSON.parse(body));
+      comparisonFrom = from ?? undefined;
+      return json(200, { from });
+    } catch (error) { return json(400, { error: error instanceof Error ? error.message : "Invalid comparison date" }); }
+  }
   if (url.pathname === "/api/weekly/annotation" && request.method === "POST") {
     try {
       let body = "";
@@ -227,8 +238,8 @@ createServer(async (request, response) => {
     if (!from) return json(400, { error: "'until' is not a valid date" });
     const leadIn = new Date(from.getTime() - TYPICAL_WINDOW_WEEKS * 7 * 86_400_000);
     const inWindow = ALL.filter((w) => { const at = new Date(w.startedAt); return at >= leadIn && at < to; });
-    const report = reviewWeeks(inWindow, DEFAULT_GOALS, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS });
-    return json(200, { ...report, weeks: report.weeks.map((week) => { const pace = weekPace(ALL, week, new Date(), annotations.get(week.weekStart), DEFAULT_GOALS.excludeFromCount), outlook = weekOutlook(week, pace); return { ...week, recovery: weekRecovery(week, annotations.get(week.weekStart), new Date()), pace, ...(outlook ? { outlook } : {}), ...(annotations.has(week.weekStart) ? { annotation: annotations.get(week.weekStart) } : {}) }; }) });
+    const report = reviewWeeks(inWindow, DEFAULT_GOALS, from, to, { leadInWeeks: TYPICAL_WINDOW_WEEKS, ...(comparisonFrom ? { comparisonFrom } : {}) });
+    return json(200, { ...report, comparisonFrom: comparisonFrom ?? null, weeks: report.weeks.map((week) => { const pace = weekPace(ALL, week, new Date(), annotations.get(week.weekStart), DEFAULT_GOALS.excludeFromCount, comparisonFrom), outlook = weekOutlook(week, pace); return { ...week, recovery: weekRecovery(week, annotations.get(week.weekStart), new Date()), pace, ...(outlook ? { outlook } : {}), ...(annotations.has(week.weekStart) ? { annotation: annotations.get(week.weekStart) } : {}) }; }) });
   }
   if (url.pathname === "/api/summary") {
     const granularity = (url.searchParams.get("granularity") ?? "week") as Granularity;

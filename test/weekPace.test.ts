@@ -11,6 +11,10 @@ function history(count=4):Workout[] {
   return Array.from({length:count},(_,i)=>[1,4,6].map(day=>workout(new Date(monday-(i+1)*7*DAY+day*DAY+17*3600000).toISOString(),100))).flat();
 }
 describe("weekday pace and weekly projection",()=>{
+  it("ignores history before comparisonFrom",()=>{
+    expect(weekPace(history(6),current,now,undefined,[],"2026-10-26")).toBeUndefined(); // three weeks: too few
+    expect(weekPace(history(6),current,now,undefined,[],"2026-10-19")).toMatchObject({historyWeeks:4});
+  });
   it("uses same-weekday history and adds typical remaining effort to actual progress",()=>{
     expect(weekPace(history(),current,now)).toMatchObject({historyWeeks:4,typicalSoFar:100,typicalRemaining:200,typicalTotal:300,projectedEffort:350,projectionPaused:false});
   });

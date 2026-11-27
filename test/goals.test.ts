@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_GOALS, median, parseGoalTargets, reviewWeeks } from "../src/domain/goals.js";
+import { DEFAULT_GOALS, median, parseComparisonFrom, parseGoalTargets, reviewWeeks } from "../src/domain/goals.js";
 import type { Workout } from "../src/domain/workout.js";
 
 let n = 0;
@@ -215,10 +215,9 @@ describe("lead-in weeks", () => {
     expect(report.weeks).toHaveLength(4);
   });
 
-  it("keeps baseline and streak over the visible window only", () => {
+  it("keeps the streak over the visible window only", () => {
     const withLead = reviewWeeks(workouts, DEFAULT_GOALS, from, to, { leadInWeeks: 12 });
     const without = reviewWeeks(workouts, DEFAULT_GOALS, from, to);
-    expect(withLead.baseline).toEqual(without.baseline);
     expect(withLead.streakWeeks).toBe(without.streakWeeks);
     expect(withLead.current!.weekStart).toBe(without.current!.weekStart);
   });
@@ -263,5 +262,48 @@ describe("goals in force at the time", () => {
     const none = { targets: [], goodWeekSessions: 3, veryGoodWeekSessions: 5, veryGoodWeekMinimums: [] };
     const report = reviewWeeks([w("2026-03-09T07:00:00Z", "walking"), w("2026-03-10T07:00:00Z", "walking"), w("2026-03-11T07:00:00Z", "cycling")], none, from, to);
     expect(report.current!.verdict).toBe("good");
+  });
+});
+
+describe("the typical week's window", () => {
+  const monday = (n: number) => new Date(Date.UTC(2026, 0, 5) + n * 7 * 86_400_000);
+  const sessions = (week: number, count: number, effort = 50) =>
+    Array.from({ length: count }, (_, i) => w(new Date(monday(week).getTime() + (i + 1) * 3_600_000).toISOString(), "strength", { effort }));
+
+  it("draws the headline baseline from the twelve weeks before, not the whole range", () => {
+    // A year ago: two sessions a week. The last twelve weeks: five. A 40-week range must not mix them.
+    const workouts = [...Array.from({ length: 27 }, (_, i) => sessions(i, 2)).flat(), ...Array.from({ length: 13 }, (_, i) => sessions(27 + i, 5)).flat()];
+    const report = reviewWeeks(workouts, DEFAULT_GOALS, monday(0), monday(40));
+    expect(report.baseline).toMatchObject({ weeks: 12, medianSessions: 5 });
+  });
+
+  it("from comparisonFrom on, compares only with weeks from then on", () => {
+    // Eight weeks at 100 effort (one activity unlogged), then eight at 250 once it was.
+    const workouts = [...Array.from({ length: 8 }, (_, i) => sessions(i, 2, 50)).flat(), ...Array.from({ length: 8 }, (_, i) => sessions(8 + i, 5, 50)).flat()];
+    const plain = reviewWeeks(workouts, DEFAULT_GOALS, monday(0), monday(16));
+    const floored = reviewWeeks(workouts, DEFAULT_GOALS, monday(0), monday(16), { comparisonFrom: monday(8).toISOString().slice(0, 10) });
+    expect(plain.weeks[12]!.effortRatio).toBeGreaterThan(1.1);
+    // The first four weeks after the break have nothing comparable yet; then they are usual.
+    expect(floored.weeks.slice(8, 12).every((x) => x.typicalEffort === undefined)).toBe(true);
+    expect(floored.weeks[12]!.typicalEffort).toBe(250);
+    expect(floored.weeks[12]!.effortRatio).toBe(1);
+    // Weeks before the break still compare among themselves.
+    expect(floored.weeks[6]!.typicalEffort).toBe(plain.weeks[6]!.typicalEffort);
+    expect(floored.baseline).toMatchObject({ weeks: 7, medianSessions: 5 });
+  });
+
+  it("rounds a mid-week comparisonFrom down to its Monday", () => {
+    const workouts = Array.from({ length: 10 }, (_, i) => sessions(i, 2)).flat();
+    const wednesday = new Date(monday(4).getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const report = reviewWeeks(workouts, DEFAULT_GOALS, monday(0), monday(10), { comparisonFrom: wednesday });
+    expect(report.weeks[7]!.typicalEffort).toBeUndefined(); // weeks 4–6 only
+    expect(report.weeks[8]!.typicalEffort).toBe(100);
+  });
+
+  it("parses the setting body", () => {
+    expect(parseComparisonFrom({ from: "2026-08-17" })).toBe("2026-08-17");
+    expect(parseComparisonFrom({ from: null })).toBeNull();
+    expect(() => parseComparisonFrom({ from: "2026-02-30" })).toThrow();
+    expect(() => parseComparisonFrom({})).toThrow();
   });
 });
