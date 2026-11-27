@@ -123,6 +123,14 @@ export interface PrivacyZone extends LatLon {
   radiusMeters: number;
 }
 
+/** `lat,lon,metres` (ROUTE_PRIVACY_ZONE) → a zone whose points are dropped from every track. */
+export function parsePrivacyZone(raw: string | undefined): PrivacyZone | undefined {
+  if (!raw?.trim()) return undefined;
+  const [lat, lon, m] = raw.split(",").map((x) => Number(x.trim()));
+  if (![lat, lon, m].every(Number.isFinite) || m! <= 0) throw new Error(`ROUTE_PRIVACY_ZONE must be lat,lon,metres — got ${raw}`);
+  return { lat: lat!, lon: lon!, radiusMeters: m! };
+}
+
 export function buildRouteRecord(
   workout: { id: string; startedAt: string; activityType: string },
   track: LatLon[],

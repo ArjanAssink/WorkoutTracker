@@ -35,19 +35,7 @@ final class HealthStore: ObservableObject {
 
     private let store = HKHealthStore()
 
-    private var readTypes: Set<HKObjectType> {
-        [
-            HKObjectType.workoutType(),
-            HKQuantityType(.heartRate),
-            HKQuantityType(.activeEnergyBurned),
-            HKQuantityType(.basalEnergyBurned),
-            HKQuantityType(.distanceWheelchair),
-            HKQuantityType(.distanceDownhillSnowSports),
-            HKQuantityType(.distanceWalkingRunning),
-            HKQuantityType(.distanceCycling),
-            HKQuantityType(.distanceSwimming),
-        ]
-    }
+    private var readTypes: Set<HKObjectType> { HealthRecords.readTypes }
 
     /// Shows the Health permission sheet the first time; afterwards it returns at once.
     /// HealthKit never says whether *read* access was granted (privacy), so a denial

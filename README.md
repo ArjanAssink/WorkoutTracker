@@ -24,7 +24,8 @@ All but `/api/health` require the shared secret in an `x-api-key` header
 | Method | Route           | Purpose |
 | ------ | --------------- | ------- |
 | `POST` | `/api/workouts` | Record one workout. |
-| `POST` | `/api/ingest/health-auto-export` | Batch ingest from the Health Auto Export app. |
+| `POST` | `/api/ingest/health-auto-export` | Batch ingest from the Health Auto Export app and the native iOS app (`ios/`). The app also sends workout `heartRateData` and an inline `route` (`[[lat, lon], …]`), and raw Health records under `data.records` in export.xml's `<Record>` shape with a `data.recordsWindow.from`; those go through the export's own converters and only days after the window's first date are written. `x-client: workout-sync-ios` labels the push. |
+| `POST` | `/api/sync/check` | Read-only: the same body as the batch ingest; answers per workout `stored`, `merged` (kept under the other recording of the session), `missing` or `rejected`, plus `serverOnly` rows. The app's Sync check screen. |
 | `GET`  | `/api/workouts` | The raw record feed for a date range; each row carries its display `label` and, when zoned, `heartRateZones` with the bpm floors (`heartRateZoneBpm`) they were cut at. |
 | `GET`  | `/api/summary`  | Per-period totals, per-activity breakdown, active days, longest streak. |
 | `GET`  | `/`              | Redirects to the dashboard, query string included. |

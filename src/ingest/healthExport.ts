@@ -139,7 +139,7 @@ export interface ParseHooks {
   onRecovery?: (sample: RecoverySample) => void;
 }
 
-const RECOVERY_TYPES: Record<string, RecoveryMetric> = {
+export const RECOVERY_TYPES: Record<string, RecoveryMetric> = {
   HKCategoryTypeIdentifierSleepAnalysis: "sleep",
   HKQuantityTypeIdentifierRestingHeartRate: "restingHeartRate",
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: "hrv",
@@ -160,7 +160,7 @@ const SLEEP_STAGES: Record<string, SleepStage> = {
   HKCategoryValueSleepAnalysisAwake: "awake",
 };
 
-function toRecoverySample(a: Record<string, string>): RecoverySample | undefined {
+export function toRecoverySample(a: Record<string, string>): RecoverySample | undefined {
   const metric = RECOVERY_TYPES[a["type"] ?? ""];
   const start = a["startDate"], end = a["endDate"] ?? a["startDate"];
   if (!metric || !start || !end) return undefined;
@@ -171,6 +171,14 @@ function toRecoverySample(a: Record<string, string>): RecoverySample | undefined
   const value = Number(a["value"]);
   if (!Number.isFinite(value)) return undefined;
   return { metric, start, end, value, ...present("sourceName", a["sourceName"]) };
+}
+
+/** A `HKQuantityTypeIdentifierBodyMass` record as a weight reading; the native app's path reuses it. */
+export function toBodyMassReading(a: Record<string, string>): WeightReading | undefined {
+  const kg = toKg(Number(a["value"]), a["unit"]);
+  const at = a["startDate"];
+  if (kg === undefined || !Number.isFinite(kg) || !at) return undefined;
+  return { at, kg, ...(a["sourceName"] ? { sourceName: a["sourceName"] } : {}) };
 }
 
 export async function* parseHealthExport(
@@ -201,11 +209,8 @@ export async function* parseHealthExport(
       return;
     }
     if (tag.name === "Record" && attributes["type"] === "HKQuantityTypeIdentifierBodyMass" && hooks.onBodyMass) {
-      const kg = toKg(Number(attributes["value"]), attributes["unit"]);
-      const at = attributes["startDate"];
-      if (kg !== undefined && at) {
-        hooks.onBodyMass({ at, kg, ...(attributes["sourceName"] ? { sourceName: attributes["sourceName"] } : {}) });
-      }
+      const reading = toBodyMassReading(attributes);
+      if (reading) hooks.onBodyMass(reading);
       return;
     }
     if (tag.name === "Record" && hooks.onRecovery && RECOVERY_TYPES[attributes["type"] ?? ""]) {

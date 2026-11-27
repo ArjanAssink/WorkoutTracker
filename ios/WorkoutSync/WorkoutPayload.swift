@@ -10,7 +10,7 @@ import HealthKit
 /// it), the duration in seconds — and the recording app's name for the relabels.
 /// `test/nativeAppParity.test.ts` pins the backend half of that contract.
 enum WorkoutPayload {
-    private static let appleDate: DateFormatter = {
+    private static let appleFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
@@ -44,8 +44,8 @@ enum WorkoutPayload {
         var out: [String: Any] = [
             "name": ActivityName.export(w.workoutActivityType),
             "sourceName": w.sourceRevision.source.name,
-            "start": appleDate.string(from: w.startDate),
-            "end": appleDate.string(from: w.endDate),
+            "start": appleFormatter.string(from: w.startDate),
+            "end": appleFormatter.string(from: w.endDate),
             "duration": w.duration,
         ]
 
@@ -58,7 +58,7 @@ enum WorkoutPayload {
         if !heartRate.isEmpty {
             // The shape Health Auto Export uses for a dated series: { date, qty } per reading.
             out["heartRateData"] = heartRate.map {
-                ["date": appleDate.string(from: $0.startDate), "qty": $0.quantity.doubleValue(for: bpm)] as [String: Any]
+                ["date": appleFormatter.string(from: $0.startDate), "qty": $0.quantity.doubleValue(for: bpm)] as [String: Any]
             }
         }
 
@@ -78,9 +78,29 @@ enum WorkoutPayload {
         return out
     }
 
-    static func body(_ workouts: [(workout: HKWorkout, heartRate: [HKQuantitySample])]) throws -> Data {
+    static func appleDate(_ date: Date) -> String { appleFormatter.string(from: date) }
+
+    /// The workout plus what the export also carries for it: the heart-rate samples (zones,
+    /// the session chart, and the summary when the recorder wrote no statistics) and the GPS
+    /// track. Slower; used by the real sync. A sample query that fails costs that extra only.
+    static func enriched(_ w: HKWorkout, store: HKHealthStore) async -> [String: Any] {
+        let hr = (try? await heartRateSamples(for: w, in: store)) ?? []
+        var out = workout(w, heartRate: hr)
+        let track = await HealthRecords.route(of: w, store: store)
+        if track.count >= 2 { out["route"] = track }
+        return out
+    }
+
+    static func body(workouts: [[String: Any]], extra: [String: Any] = [:]) throws -> Data {
+        var data: [String: Any] = ["workouts": workouts]
+        for (k, v) in extra { data[k] = v }
+        return try JSONSerialization.data(withJSONObject: ["data": data], options: [.sortedKeys])
+    }
+
+    /// Workouts alone, without samples — what the sync check sends.
+    static func body(_ workouts: [HKWorkout]) throws -> Data {
         try JSONSerialization.data(
-            withJSONObject: ["data": ["workouts": workouts.map { workout($0.workout, heartRate: $0.heartRate) }]],
+            withJSONObject: ["data": ["workouts": workouts.map { workout($0) }]],
             options: [.sortedKeys]
         )
     }

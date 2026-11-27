@@ -58,6 +58,8 @@ const workoutSchema = z
     // The app that recorded the workout ("Apple Watch", "Strava"). The native iOS app sends
     // it; the relabels need it (Strava "Other" ≥ 60 min is BJJ), exactly as the export does.
     sourceName: z.unknown().optional(),
+    // The native app's GPS track, [[lat, lon], …] in recording order.
+    route: z.unknown().optional(),
   })
   .passthrough();
 
@@ -249,6 +251,7 @@ function parseOne(entry: unknown): WorkoutInput {
     sourceName: "Health Auto Export",
     ...(histogram ? { heartRateHistogram: encodeHistogram(histogram) } : {}),
     ...(series ? { heartRateSeries: encodeSeries(series) } : {}),
+    ...set("routeTrack", readTrack(w.route)),
     ...set("distanceMeters", measure(w.distance, toMeters, "m", "sum")),
     ...set("activeEnergyKcal", activeEnergy),
     ...set("totalEnergyKcal", totalEnergy),
@@ -352,6 +355,18 @@ function timedHeartRate(value: unknown): HeartRateSample[] {
     if (at !== undefined && bpm !== undefined) out.push({ at, bpm });
   }
   return out;
+}
+
+/** `[[lat, lon], …]` → points; anything unreadable is dropped, and fewer than two is no track. */
+function readTrack(value: unknown): Array<{ lat: number; lon: number }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: Array<{ lat: number; lon: number }> = [];
+  for (const p of value) {
+    if (!Array.isArray(p)) continue;
+    const [lat, lon] = p as unknown[];
+    if (typeof lat === "number" && typeof lon === "number" && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) out.push({ lat, lon });
+  }
+  return out.length >= 2 ? out : undefined;
 }
 
 function round(value: number | undefined): number | undefined {

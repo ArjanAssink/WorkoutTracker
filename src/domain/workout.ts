@@ -58,6 +58,8 @@ export type WorkoutInput = Omit<Workout, "id" | "effort" | "effortModel" | "reco
    * `heartrate` table, written beside the row by whoever stored it — never on the row itself.
    */
   heartRateSeries?: string;
+  /** A GPS track sent inline (the native app); for the `routes` table, never on the row. */
+  routeTrack?: Array<{ lat: number; lon: number }>;
 };
 
 /**
@@ -113,7 +115,7 @@ export function buildWorkout(
   }
 
   // Importer-only fields: they belong to other tables and must not reach the row.
-  const { routeFile: _routeFile, heartRateSeries: _series, ...stored } = input;
+  const { routeFile: _routeFile, heartRateSeries: _series, routeTrack: _track, ...stored } = input;
   const normalised: WorkoutInput = {
     ...stored,
     activityType: normaliseActivityType(input.activityType),

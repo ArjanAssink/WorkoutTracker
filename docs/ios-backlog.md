@@ -141,6 +141,31 @@ and in the app's Keychain.
 - *Done when:* the app opens on the dashboard without asking for a key, the chip shows the last
   sync, and tapping it opens the native screen.
 
+### 11. Sync check — written 2026-11-26
+- Native screen (Sync → "Check against the server"): the phone's last 30 days of workouts
+  posted to `POST /api/sync/check` (read-only), which answers per workout stored / merged /
+  missing / rejected with the server's own id and dedupe rules (`domain/syncCheck.ts`), plus
+  stored rows no phone workout accounts for. "Send the N missing" posts them through ingest.
+
+### 12. Everything the export import reads — written 2026-11-26
+What `npm run sync` (export.xml) stores, and how the app now provides each:
+
+| Data | Export import | App |
+|---|---|---|
+| Workout core (type, times, duration, distance, energy, HR avg/min/max, source) | `<Workout>` | ✅ since item 4 |
+| Workout HR stream → zones histogram + HR-over-session series | loose HR `<Record>`s | ✅ `heartRateData` per workout |
+| Workout GPS route → `routes` | GPX files | ✅ inline `route`; `ROUTE_PRIVACY_ZONE` as an app setting applies the same zone |
+| Body weight | `BodyMass` records | ✅ raw records |
+| Sleep stages, resting HR, HRV, respiratory rate, SpO2, wrist temperature, breathing disturbances (iOS 18+), daylight, steps | records | ✅ raw records, same converters, same aggregation |
+
+- All-day heart rate is not stored by any path (only used inside workouts), so there is nothing
+  to send.
+- The app sends whole days from noon before the last synced day; the server writes only days after
+  that date (`nativeRecords.ts`). The parity test runs the same records through both paths and
+  expects identical days.
+- Background wakes on new workouts, sleep and weight; every sync also sends the records.
+- Workouts synced before this build lack HR streams and routes: "Re-send the last 30 days" fixes that.
+
 ## Later (not MVP — pick by need)
 
 - **Source label.** The endpoint stamps pushes and notifications as "Health Auto Export". Let the
