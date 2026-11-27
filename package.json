@@ -25,7 +25,8 @@
     "lifts": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-lifts.js",
     "block": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-block-log.js",
     "strava": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/import-strava.js",
-    "dedupe": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/dedupe-workouts.js"
+    "dedupe": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/dedupe-workouts.js",
+    "remove": "npm run build --silent && node --env-file-if-exists=.env dist/scripts/remove-workout.js"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.2",

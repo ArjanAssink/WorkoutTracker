@@ -45,6 +45,17 @@ export class HeartRateSeriesRepository {
     return written;
   }
 
+  /** Removes one workout's series; a missing row is not an error. */
+  async delete(startedAt: string, workoutId: string): Promise<boolean> {
+    try {
+      await this.client.deleteEntity(this.partition(startedAt), workoutId);
+      return true;
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 404) return false;
+      throw error;
+    }
+  }
+
   async get(startedAt: string, workoutId: string): Promise<HeartRateSeriesRecord | undefined> {
     try {
       const e = await this.client.getEntity<Record<string, unknown>>(this.partition(startedAt), workoutId);

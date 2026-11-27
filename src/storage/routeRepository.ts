@@ -44,6 +44,17 @@ export class RouteRepository {
     return written;
   }
 
+  /** Removes one workout's route; a missing row is not an error. */
+  async delete(startedAt: string, workoutId: string): Promise<boolean> {
+    try {
+      await this.client.deleteEntity(`${this.userId}|${startedAt.slice(0, 4)}`, `${startedAt}|${workoutId}`);
+      return true;
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 404) return false;
+      throw error;
+    }
+  }
+
   /** Routes starting in [from, to), oldest first. */
   async list(from: Date, to: Date): Promise<RouteRecord[]> {
     const out: RouteRecord[] = [];

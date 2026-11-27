@@ -62,6 +62,7 @@ npm run lifts -- <workbook.xlsx> --as-of YYYY-MM-DD   # the long-term lift workb
 npm run block -- <weekly-log.xlsx> --program "Name"    # a block's weekly log; re-runs are upserts
 npm run add -- sessions.csv            # manual workout backfill
 npm run dedupe -- --dry-run            # the same session recorded twice (Wahoo + watch)
+npm run remove -- <id> <startedAt> --dry-run   # one wrong session: row + route + HR series; delete it on the phone too
 WORKOUT_KEY=$(…) node scripts/dev/screenshot.cjs "$WORKOUTS_URL/api/strength" out.png dark
 ```
 

@@ -635,6 +635,15 @@ as `source: manual` with the note. Re-running is safe — a row already present 
 `duplicate`. These rows exist only here, not in Apple Health: if you later log the same
 session there with a different start time, it will not dedupe.
 
+
+### Correcting one session
+
+A session recorded as the wrong type, or left running, can't be edited in Health. Store
+the corrected one (e.g. through `POST /api/ingest/health-auto-export` with the trimmed
+`heartRateData`), remove the original with `npm run remove -- <id> <startedAt> [--dry-run]`
+(the row, its route and its heart-rate series), and **delete it on the phone**: every path
+re-derives the same id from Health, so the next export or app re-send would bring it back.
+
 ## Subscribing in your calendar
 
 `GET /api/calendar.ics?token=…` is an [RFC 5545][ics] feed. Subscribe to it and every
