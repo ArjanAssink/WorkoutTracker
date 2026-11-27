@@ -128,6 +128,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
 <script>setTimeout(() => { document.getElementById("app-splash").hidden = true; }, 8000); document.getElementById("app-force-refresh").onclick = () => location.reload();</script>
 <script src="/api/app-assets/app-shell.js" defer></script>
 <script src="/api/app-assets/notifications.js" defer></script>
+<script src="/api/app-assets/nav.js" defer></script>
 <noscript><style>#app-splash{display:none}</style></noscript>
 <div class="wrap">
   <div id="gate" class="gate" hidden>
@@ -139,8 +140,6 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; } .scroll { o
   <div id="app" hidden>
     <header>
       <h1>Routes</h1><span class="subtitle" id="span-label"></span><span class="spacer"></span>
-      <a class="icon-btn" href="/api/dashboard">← Dashboard</a>
-      <button class="icon-btn" id="theme-toggle" type="button">Theme</button>
     </header>
 
     <div class="filters">
@@ -546,12 +545,13 @@ function wireGroup(id, attr, onPick) {
 }
 function init() {
   const t = readStored(THEME_STORAGE); if (t) document.documentElement.setAttribute("data-theme", t);
+  // The dark-mode switch lives in nav.js; the map draws colours in script, so repaint.
+  document.addEventListener("workout-theme-change", () => { if (state.data) { renderAll(); renderOverview(); renderPlaces(); } });
   wireGroup("colour-group", "colour", (v) => { state.colour = v; renderHero(); });
   wireGroup("basemap-group", "basemap", (v) => { if (v !== "none" && !hasLeaflet()) { alert("The map library did not load; check the connection."); return; } state.basemap = v; writeStored("workout-tracker.basemap", v); state.cam = null; renderHero(); renderOverview(); });
   wireGroup("range-group", "range", (v) => { state.range = v; state.cam = null; renderAll(); renderPhotos(); });
   document.getElementById("back-home").addEventListener("click", () => { state.view = "home"; state.place = null; state.cam = null; state.hover = null; document.getElementById("route-photos").hidden = true; state.focus = null; renderAll(); renderPhotos(); });
   document.getElementById("toggle-table").addEventListener("click", (e) => { const p = document.getElementById("table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderTable(); });
-  document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); if (state.data) { renderAll(); renderOverview(); renderPlaces(); } });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
   document.getElementById("gate-key").addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("gate-go").click(); });
   let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (state.data) { state.cam = state.focus ? { fitTo: pad(state.focus.bb) } : null; renderHero(); renderOverview(); } }, 120); });

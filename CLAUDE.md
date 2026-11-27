@@ -93,7 +93,8 @@ src/storage/    workoutRepository (PK me|YYYY-MM), bodyWeightRepository (PK me|Y
                 milestoneRepository (PK me|milestones, RK <week>|<key>)
 src/functions/  thin HTTP wiring; routePrefix is "" so every route carries api/ explicitly
 public/         index.html (dashboard), workouts.html (/api/history), strength.html, recovery.html,
-                map.html; app-assets/notifications.js is the bell + panel every page loads — standalone, no build
+                map.html; app-assets/notifications.js is the bell + panel every page loads, app-assets/nav.js the
+                page links (inline when wide, hamburger ≤860px) and the dark-mode switch — standalone, no build
 scripts/        the CLIs above, preview server, OIDC setup, dev/screenshot.cjs
 ```
 

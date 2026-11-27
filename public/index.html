@@ -379,6 +379,7 @@ tbody tr:last-child td { border-bottom: 0; }
 <script>setTimeout(() => { document.getElementById("app-splash").hidden = true; }, 8000); document.getElementById("app-force-refresh").onclick = () => location.reload();</script>
 <script src="/api/app-assets/app-shell.js" defer></script>
 <script src="/api/app-assets/notifications.js" defer></script>
+<script src="/api/app-assets/nav.js" defer></script>
 <noscript><style>#app-splash{display:none}</style></noscript>
 <div class="wrap">
 
@@ -396,12 +397,7 @@ tbody tr:last-child td { border-bottom: 0; }
       <span class="subtitle" id="range-label"></span>
       <span class="spacer"></span>
       <button class="icon-btn sync-chip" id="native-sync" type="button" hidden></button>
-      <a class="icon-btn" href="/api/history" style="text-decoration:none">Workouts →</a>
-      <a class="icon-btn" href="/api/strength" style="text-decoration:none">Strength →</a>
-      <a class="icon-btn" href="/api/recovery" style="text-decoration:none">Recovery →</a>
-      <a class="icon-btn" href="/api/map" style="text-decoration:none">Routes →</a>
-      <button class="icon-btn" id="theme-toggle" type="button" title="Toggle light and dark">Theme</button>
-      <button class="icon-btn" id="sign-out" type="button">Forget key</button>
+      <button class="icon-btn" id="sign-out" type="button" data-nav-menu>Forget key</button>
     </header>
 
     <!-- One filter row, above everything it scopes. Date range first. -->
@@ -2092,13 +2088,6 @@ function initControls() {
     if (!panel.hidden) renderTrendTable();
   });
 
-  document.getElementById("theme-toggle").addEventListener("click", () => {
-    const current = document.documentElement.getAttribute("data-theme");
-    const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
-    const next = current ? (current === "dark" ? "light" : "dark") : (prefersDark ? "light" : "dark");
-    document.documentElement.setAttribute("data-theme", next);
-    writeStored(THEME_STORAGE, next);
-  });
 
   document.getElementById("sign-out").addEventListener("click", () => signOut());
 

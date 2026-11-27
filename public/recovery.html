@@ -139,6 +139,7 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
 <script>setTimeout(() => { document.getElementById("app-splash").hidden = true; }, 8000); document.getElementById("app-force-refresh").onclick = () => location.reload();</script>
 <script src="/api/app-assets/app-shell.js" defer></script>
 <script src="/api/app-assets/notifications.js" defer></script>
+<script src="/api/app-assets/nav.js" defer></script>
 <noscript><style>#app-splash{display:none}</style></noscript>
 <div class="wrap">
   <div id="gate" class="gate" hidden>
@@ -150,11 +151,6 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
   <div id="app" hidden>
     <header>
       <h1>Recovery</h1><span class="subtitle" id="span-label"></span><span class="spacer"></span>
-      <a class="icon-btn" href="/api/dashboard">← Dashboard</a>
-      <a class="icon-btn" href="/api/history">Workouts →</a>
-      <a class="icon-btn" href="/api/map">Routes →</a>
-      <a class="icon-btn" href="/api/strength">Strength →</a>
-      <button class="icon-btn" id="theme-toggle" type="button">Theme</button>
     </header>
 
     <div class="filters">
@@ -595,7 +591,6 @@ function init() {
   wireGroup("range-group", "range", (v) => { state.range = v; load(); });
   document.getElementById("toggle-steps-table").addEventListener("click", (e) => { const p = document.getElementById("steps-table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; e.target.setAttribute("aria-expanded", String(!p.hidden)); });
   document.getElementById("toggle-sleep-table").addEventListener("click", (e) => { const p = document.getElementById("sleep-table"); p.hidden = !p.hidden; e.target.textContent = p.hidden ? "Show data table" : "Hide data table"; if (!p.hidden) renderSleepTable(); });
-  document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
   document.getElementById("gate-key").addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("gate-go").click(); });
   let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (state.data) renderAll(); }, 120); });

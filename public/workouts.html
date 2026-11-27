@@ -175,6 +175,7 @@ tr.detail > td { padding: 4px 0 18px; }
 <script>setTimeout(() => { document.getElementById("app-splash").hidden = true; }, 8000); document.getElementById("app-force-refresh").onclick = () => location.reload();</script>
 <script src="/api/app-assets/app-shell.js" defer></script>
 <script src="/api/app-assets/notifications.js" defer></script>
+<script src="/api/app-assets/nav.js" defer></script>
 <noscript><style>#app-splash{display:none}</style></noscript>
 <div class="wrap">
   <div id="gate" class="gate" hidden>
@@ -186,11 +187,6 @@ tr.detail > td { padding: 4px 0 18px; }
   <div id="app" hidden>
     <header>
       <h1>Workouts</h1><span class="subtitle" id="span-label"></span><span class="spacer"></span>
-      <a class="icon-btn" href="/api/dashboard">← Dashboard</a>
-      <a class="icon-btn" href="/api/strength">Strength →</a>
-      <a class="icon-btn" href="/api/recovery">Recovery →</a>
-      <a class="icon-btn" href="/api/map">Routes →</a>
-      <button class="icon-btn" id="theme-toggle" type="button">Theme</button>
     </header>
 
     <div class="filters">
@@ -648,7 +644,6 @@ function init() {
   let st; document.getElementById("search").addEventListener("input", (e) => { clearTimeout(st); st = setTimeout(() => { state.query = e.target.value; reset(); }, 150); });
   document.getElementById("more").addEventListener("click", () => { state.shown += PAGE; renderList(); });
   addEventListener("hashchange", focusTarget);
-  document.getElementById("theme-toggle").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme"); const d = matchMedia("(prefers-color-scheme: dark)").matches; const n = c ? (c === "dark" ? "light" : "dark") : (d ? "light" : "dark"); document.documentElement.setAttribute("data-theme", n); writeStored(THEME_STORAGE, n); });
   document.getElementById("gate-go").addEventListener("click", () => { const v = document.getElementById("gate-key").value.trim(); if (v) start(v); });
   document.getElementById("gate-key").addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("gate-go").click(); });
   const fromUrl = new URL(location.href).searchParams.get("key"); if (fromUrl) history.replaceState(null, "", location.pathname + location.hash);

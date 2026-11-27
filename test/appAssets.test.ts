@@ -40,6 +40,9 @@ describe("app branding assets", () => {
 it("revalidates the update script and never caches the deployment version", async () => {
   const script = await appAssets(request("app-shell.js"), new InvocationContext());
   expect(script.headers).toMatchObject({ "cache-control": "no-cache", "content-type": "text/javascript; charset=utf-8" });
+  // Navigation changes with the pages; a year-long immutable cache would strand old links.
+  const nav = await appAssets(request("nav.js"), new InvocationContext());
+  expect(nav.headers).toMatchObject({ "cache-control": "no-cache", "content-type": "text/javascript; charset=utf-8" });
   const version = await appAssets(request("app-version.json"), new InvocationContext());
   expect(version.headers).toMatchObject({ "cache-control": "no-store" });
   expect((version.jsonBody as { version: string }).version).toMatch(/^[a-f0-9]{20}$/);
