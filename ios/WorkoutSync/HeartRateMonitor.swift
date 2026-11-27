@@ -51,6 +51,8 @@ final class HeartRateMonitor: NSObject, ObservableObject {
 
     /// Every usable reading, with the time it arrived.
     var onReading: ((Date, Int) -> Void)?
+    /// The strap connected (true) or dropped (false).
+    var onConnectionChange: ((Bool) -> Void)?
 
     private static let heartRateService = CBUUID(string: "180D")
     private static let measurement = CBUUID(string: "2A37")
@@ -258,6 +260,7 @@ extension HeartRateMonitor: CBCentralManagerDelegate {
             }
             status = .connected(displayName(p))
             p.discoverServices([Self.heartRateService, Self.batteryService, Self.deviceInfo])
+            onConnectionChange?(true)
         }
     }
 
@@ -273,6 +276,7 @@ extension HeartRateMonitor: CBCentralManagerDelegate {
             guard p.identifier == peripheral?.identifier else { return }
             bpm = nil
             contact = nil
+            onConnectionChange?(false)
             // Out of range, or the strap slipped off and slept: wait for it to come back.
             if active { connect(p) } else { status = .inactive }
         }

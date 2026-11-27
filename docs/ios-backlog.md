@@ -188,6 +188,14 @@ time. Recording here puts both on one workout, saved to Health by the app itself
   Then the normal sync sends it. Health write access (Workouts, Heart Rate) is asked when the screen opens.
 - **Activities**: BJJ → Martial Arts, Capoeira → Tai Chi (what the watch records, so the relabels and
   ids are unchanged), Strength, Other.
+- **Training starts at** (toggle, remembered): Start arms the recording for a clock time (default the
+  next :00/:30 at least 5 min away), so the strap goes on while changing and only class counts. The
+  screen counts down with the strap live; "Start now" if class begins early; a quiet notification
+  when it starts. Readings before the start are dropped.
+- **Ending by switching the strap off**: the strap dropping while recording schedules a notification
+  for 10 min later (withdrawn by the next reading). Opening the app after 10 silent minutes ends the
+  workout at its last reading and opens Save, with Resume for a dropout. *Inferred:* the OH1 drops the
+  BLE link when switched off; a lazy end on open, because a suspended app cannot run a timer.
 - No active energy: the app has no calorie model. The backend scores by heart rate, so nothing is lost there.
 - UI: a heart button over the dashboard (bottom right) opens it; while a recording runs or waits for
   Save, a bar there shows activity, time and bpm. Also from the sync screen.

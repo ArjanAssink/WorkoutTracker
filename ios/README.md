@@ -34,4 +34,7 @@ Heart button over the dashboard → pick the activity → the strap connects (fi
 the list; Polar OH1: press its button until the light blinks) → Start. Lock the phone and put it
 away. Afterwards: End → Save to Health. Don't also record the session in Polar Flow, or the
 same class arrives twice (the backend's dedupe would merge them, but it's cleaner not to).
+For a class that starts later than you put the strap on, turn on "Training starts later" and set
+the time: the clock starts then. At the end, just switch the strap off — after 10 quiet minutes a
+notification says so, and opening the app ends the workout at the last reading and offers Save.
 Don't swipe the app away mid-session: that stops Bluetooth in the background.

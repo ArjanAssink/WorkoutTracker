@@ -68,8 +68,18 @@ private struct SetupView: View {
                 }
             }
             Section {
+                Toggle("Training starts later", isOn: $recorder.startLater)
+                if recorder.startLater {
+                    DatePicker("Starts at", selection: $recorder.startTime, displayedComponents: .hourAndMinute)
+                }
+            } footer: {
+                if recorder.startLater {
+                    Text("The strap connects now; the workout starts at \(recorder.startTime.formatted(date: .omitted, time: .shortened)). Readings before then don't count.")
+                }
+            }
+            Section {
                 Button(action: recorder.start) {
-                    Label("Start", systemImage: "play.fill")
+                    Label(startLabel, systemImage: "play.fill")
                         .frame(maxWidth: .infinity)
                         .font(.title3.bold())
                 }
@@ -78,7 +88,7 @@ private struct SetupView: View {
                 .disabled(!connected)
             } footer: {
                 Text(connected
-                     ? "Lock the phone and put it away once it's running. Readings keep coming in; if the strap drops out it reconnects by itself."
+                     ? "Lock the phone and put it away. Readings keep coming in, and a dropout reconnects by itself. When you're done, switch the strap off: after \(Int(WorkoutRecorder.strapGoneLimit / 60)) quiet minutes the workout ends at its last reading, and a notification takes you to Save."
                      : "Start is available once the strap is connected.")
             }
         }
@@ -87,6 +97,10 @@ private struct SetupView: View {
     private var connected: Bool {
         if case .connected = monitor.status { return true }
         return false
+    }
+
+    private var startLabel: String {
+        recorder.startLater ? "Start at \(recorder.startTime.formatted(date: .omitted, time: .shortened))" : "Start"
     }
 }
 
@@ -206,8 +220,20 @@ private struct LiveView: View {
         VStack(spacing: 28) {
             Spacer()
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(Format.clock(recorder.recording?.duration(at: context.date) ?? 0))
-                    .font(.system(size: 64, weight: .semibold, design: .rounded).monospacedDigit())
+                if let rec = recorder.recording, rec.waiting(at: context.date) {
+                    VStack(spacing: 4) {
+                        Text("Starts at \(rec.start.formatted(date: .omitted, time: .shortened))")
+                            .font(.headline).foregroundStyle(.secondary)
+                        Text("−" + Format.clock(rec.start.timeIntervalSince(context.date)))
+                            .font(.system(size: 64, weight: .semibold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Button("Start now", action: recorder.startNow)
+                            .buttonStyle(.bordered)
+                    }
+                } else {
+                    Text(Format.clock(recorder.recording?.duration(at: context.date) ?? 0))
+                        .font(.system(size: 64, weight: .semibold, design: .rounded).monospacedDigit())
+                }
             }
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let fresh = monitor.lastReading.map { context.date.timeIntervalSince($0) < 5 } ?? false
@@ -228,7 +254,7 @@ private struct LiveView: View {
                 .font(.footnote)
             Spacer()
             Button(role: .destructive) { confirmingEnd = true } label: {
-                Label("End", systemImage: "stop.fill")
+                Label(isWaiting ? "Cancel" : "End", systemImage: isWaiting ? "xmark" : "stop.fill")
                     .font(.title3.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -236,12 +262,20 @@ private struct LiveView: View {
             .tint(.red)
             .padding(.horizontal)
             .padding(.bottom)
-            .confirmationDialog("End this workout?", isPresented: $confirmingEnd, titleVisibility: .visible) {
-                Button("End workout", role: .destructive, action: recorder.end)
-                Button("Keep recording", role: .cancel) {}
+            .confirmationDialog(isWaiting ? "Cancel this workout?" : "End this workout?",
+                                isPresented: $confirmingEnd, titleVisibility: .visible) {
+                if isWaiting {
+                    Button("Cancel workout", role: .destructive, action: recorder.discard)
+                    Button("Keep waiting", role: .cancel) {}
+                } else {
+                    Button("End workout", role: .destructive, action: recorder.end)
+                    Button("Keep recording", role: .cancel) {}
+                }
             }
         }
     }
+
+    private var isWaiting: Bool { recorder.recording?.waiting() ?? false }
 }
 
 private struct Stat: View {
@@ -325,7 +359,9 @@ struct RecordingBar: View {
                 Image(systemName: recorder.phase == .recording ? "record.circle" : "square.and.arrow.down")
                     .foregroundStyle(.red)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    if recorder.phase == .recording {
+                    if let rec = recorder.recording, rec.waiting(at: context.date) {
+                        Text("\(rec.activity.label) starts in \(Format.clock(rec.start.timeIntervalSince(context.date)))")
+                    } else if recorder.phase == .recording {
                         Text("\(recorder.recording?.activity.label ?? "Workout") · \(Format.clock(recorder.recording?.duration(at: context.date) ?? 0))")
                     } else {
                         Text("Workout not saved yet — tap to save")
