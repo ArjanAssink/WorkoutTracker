@@ -123,10 +123,10 @@ td.num + td:not(.num), th.num + th:not(.num) { padding-left: 16px; }
 @keyframes splash-dot { 0%,70%,100% { transform:translateY(0); opacity:0.35; } 35% { transform:translateY(-3px); opacity:1; } }
 @media (prefers-reduced-motion:reduce) { #app-splash img, .splash-dots i { animation:none; } }
 #app-splash[hidden] { display:none; }
-#app-force-refresh { position:fixed; z-index:10000; right:max(16px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); min-height:44px; border:1px solid var(--border); border-radius:22px; padding:10px 14px; background:var(--surface-1); color:var(--text-primary); font:13px system-ui,sans-serif; box-shadow:0 2px 12px rgba(0,0,0,0.12); cursor:pointer; }
+body > #app-force-refresh { position:fixed; z-index:10000; right:max(16px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); min-height:44px; border:1px solid var(--border); border-radius:22px; padding:10px 14px; background:var(--surface-1); color:var(--text-primary); font:13px system-ui,sans-serif; box-shadow:0 2px 12px rgba(0,0,0,0.12); cursor:pointer; }
 #app-force-refresh:focus-visible { outline:2px solid var(--series-1); outline-offset:3px; }
 #app-force-refresh:disabled { opacity:0.7; cursor:wait; }
-#app-refresh-status { position:fixed; z-index:10000; right:16px; bottom:76px; max-width:280px; padding:10px 14px; border-radius:8px; background:var(--surface-1); color:var(--text-primary); border:1px solid var(--border); font:13px/1.5 system-ui,sans-serif; }
+#app-refresh-status { position:fixed; z-index:10000; right:16px; bottom:max(16px,env(safe-area-inset-bottom)); max-width:280px; padding:10px 14px; border-radius:8px; background:var(--surface-1); color:var(--text-primary); border:1px solid var(--border); font:13px/1.5 system-ui,sans-serif; }
 </style>
 </head>
 <body>

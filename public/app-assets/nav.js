@@ -4,7 +4,9 @@
  * Wide screens: the pages sit inline as one segmented control, the current one marked.
  * Narrow screens (≤ 860px): the same links fold into a hamburger menu that drops down
  * under the header. Header controls marked `data-nav-menu` (the dashboard's "Forget key")
- * travel with the links, so they live in the menu on a phone and inline on a laptop.
+ * travel with the links, so they live in the menu on a phone and inline on a laptop. The
+ * "Refresh app" button (app-shell.js) joins them; until this script mounts it floats in
+ * the corner, so a page whose navigation fails to load can still be refreshed.
  *
  * The switch flips `data-theme` on <html> and stores the choice under the same key the
  * pages already read at start-up. Pages that draw colours in script (the map) listen for
@@ -48,6 +50,13 @@ header { position: relative; }
 .an-links a[aria-current="page"] { background: var(--series-1, #2a78d6); color: #fff; }
 .an-extra { display: flex; align-items: center; gap: 8px; }
 .an-extra:empty { display: none; }
+/* Inline (wide) the label would push the theme switch onto a second row: show only the
+   arrow there; the text stays the accessible name and returns in the narrow menu. */
+.an-extra > .an-refresh { font: inherit; font-size: 0; color: var(--text-secondary, #52514e); cursor: pointer; white-space: nowrap;
+  width: 32px; height: 32px; padding: 0; border-radius: 50%; background: var(--surface-1, #fff); border: 1px solid var(--border, rgba(11,11,11,.1)); }
+.an-extra > .an-refresh::before { content: "↻"; font-size: 16px; }
+.an-extra > .an-refresh:hover { background: var(--hover-wash, rgba(11,11,11,.04)); color: var(--text-primary, #0b0b0b); }
+.an-extra > .an-refresh:disabled { opacity: .7; cursor: wait; }
 .an-theme { order: 2; align-self: center; flex: none; position: relative; width: 56px; height: 32px; padding: 0; border-radius: 16px; cursor: pointer;
   border: 1px solid var(--border, rgba(11,11,11,.1)); background: var(--surface-1, #fff); color: var(--text-muted, #898781); }
 .an-theme .an-track { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
@@ -73,7 +82,9 @@ header { position: relative; }
   .an-links { flex-direction: column; border: 0; padding: 0; background: none; gap: 2px; }
   .an-links a { font-size: 15px; padding: 11px 12px; }
   .an-extra { flex-direction: column; align-items: stretch; border-top: 1px solid var(--border, rgba(11,11,11,.1)); margin-top: 6px; padding-top: 6px; }
-  .an-extra > * { text-align: left; font-size: 15px; padding: 11px 12px; border: 0; background: none; border-radius: 8px; }
+  .an-extra > *, .an-extra > .an-refresh { text-align: left; font-size: 15px; padding: 11px 12px; border: 0; background: none; border-radius: 8px; }
+  .an-extra > .an-refresh { width: auto; height: auto; color: inherit; }
+  .an-extra > .an-refresh::before { content: none; }
 }
 `;
 
@@ -137,6 +148,8 @@ header { position: relative; }
     if (!header || header.querySelector(".an-menu")) return;
     document.head.append(el("style", { text: css }));
     for (const node of header.querySelectorAll("[data-nav-menu]")) extra.append(node);
+    const refresh = document.getElementById("app-force-refresh");
+    if (refresh) { refresh.classList.add("an-refresh"); refresh.title = "Refresh app: " + refresh.title; extra.append(refresh); }
     header.append(menu, theme, burger);
     syncTheme();
   }
