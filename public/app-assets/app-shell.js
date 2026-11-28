@@ -1,19 +1,7 @@
 (() => {
   "use strict";
-  const splash = document.getElementById("app-splash");
   const button = document.getElementById("app-force-refresh");
   const status = document.getElementById("app-refresh-status");
-  const intro = splash.querySelector("img").getAnimations?.().find((animation) => animation.animationName === "splash-swoop");
-  const dismissNow = () => { splash.hidden = true; };
-  const dismiss = () => {
-    // Let the brief entrance settle before revealing data; reduced motion has no intro.
-    if (intro && (intro.playState === "running" || intro.playState === "paused")) intro.finished.then(dismissNow, dismissNow);
-    else dismissNow();
-  };
-  document.addEventListener("workout-app-ready", dismiss, { once: true });
-  if (window.workoutAppReady) dismiss();
-  // A failed data request or page script must never trap the app behind the splash.
-  setTimeout(dismissNow, 8000);
   let refreshing = false, version, checking;
 
   async function refreshApp() {

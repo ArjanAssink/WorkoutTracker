@@ -27,16 +27,17 @@ targets:
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         # Only what the INFOPLIST_KEY_ settings cannot express: the background mode that keeps
-        # strap readings arriving while the phone is locked. Xcode merges it with the rest.
+        # strap readings arriving while the phone is locked, and the launch screen (brand blue,
+        # the logo; RootView's LaunchCover continues it until the dashboard has loaded).
+        # Xcode merges it with the rest.
         INFOPLIST_FILE: WorkoutSync/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: Workout Sync
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSHealthShareUsageDescription: Reads your workouts and their heart rate so they can be sent to your own workout tracker.
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: Saves the workouts you record in this app, with their heart rate, to Health.
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: Connects to your heart-rate strap to record a workout's heart rate.
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.5"
-        CURRENT_PROJECT_VERSION: "12"
+        CURRENT_PROJECT_VERSION: "13"
         SWIFT_VERSION: "5.0"

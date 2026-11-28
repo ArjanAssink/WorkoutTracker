@@ -17,6 +17,9 @@ import WebKit
 final class WebBridge: NSObject, ObservableObject {
     @Published var syncScreenRequested = false
     @Published private(set) var loadError: String?
+    /// False until the dashboard's first load finishes or fails: RootView holds the launch
+    /// cover over the web view until then, so the app never shows a blank white page.
+    @Published private(set) var firstLoadDone = false
 
     let webView: WKWebView
     private let settings: AppSettings
@@ -60,6 +63,11 @@ final class WebBridge: NSObject, ObservableObject {
     func reload() {
         loadError = nil
         if webView.url == nil { loaded = nil; loadIfNeeded() } else { webView.reload() }
+    }
+
+    /// Lifts the launch cover regardless, so a slow network never traps the app behind it.
+    func endLaunchCover() {
+        if !firstLoadDone { firstLoadDone = true }
     }
 
     @objc private func pullToRefresh(_ control: UIRefreshControl) {
@@ -132,6 +140,7 @@ extension WebBridge: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadError = nil
+        endLaunchCover()
         webView.scrollView.refreshControl?.endRefreshing()
         pushStatus()
     }
@@ -148,6 +157,7 @@ extension WebBridge: WKNavigationDelegate {
         webView.scrollView.refreshControl?.endRefreshing()
         if (error as NSError).code == NSURLErrorCancelled { return }
         loadError = error.localizedDescription
+        endLaunchCover()
     }
 }
 

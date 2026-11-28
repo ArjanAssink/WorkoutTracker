@@ -169,7 +169,7 @@ against every other, and relabelling a slug changes identity.
    localStorage, the in-app-only "Phone sync" chip via `window.workoutSyncNative`), 11 (sync
    check, `POST /api/sync/check`) and 12 (export parity: HR streams, routes, and raw Health
    records under `data.records` through the export's own converters, `nativeRecords.ts`)
-   await the phone; 13 (record a workout in the app from a Bluetooth strap — the OH1 for BJJ, replacing Polar Flow — saved to Health via `HKWorkoutBuilder`) was written 2026-11-27 and awaits the phone. `ios/` is XcodeGen; run `xcodegen` after every pull. Native code is never compiled
+   await the phone; 13 (record a workout in the app from a Bluetooth strap — the OH1 for BJJ, replacing Polar Flow — saved to Health via `HKWorkoutBuilder`) was written 2026-11-27 and awaits the phone. 14 (native launch screen continued by a SwiftUI cover until the web view's first load; the web splash removed from every page) was written 2026-11-28 and awaits the phone. `ios/` is XcodeGen; run `xcodegen` after every pull. Native code is never compiled
    here (no Swift toolchain) — the user's Xcode build is the first compile.
 
 ## Working agreements

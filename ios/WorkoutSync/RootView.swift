@@ -30,9 +30,33 @@ struct RootView: View {
                 .sheet(isPresented: $bridge.syncScreenRequested, onDismiss: bridge.loadIfNeeded) {
                     SyncView(onDone: { bridge.syncScreenRequested = false })
                 }
+                // Continues the launch screen until the dashboard has drawn, then fades.
+                .overlay {
+                    if !bridge.firstLoadDone { LaunchCover().transition(.opacity) }
+                }
+                .animation(.easeOut(duration: 0.25), value: bridge.firstLoadDone)
+                .task {
+                    try? await Task.sleep(for: .seconds(8))
+                    bridge.endLaunchCover()
+                }
         } else {
             SyncView()
         }
+    }
+}
+
+/// The launch screen (Info.plist `UILaunchScreen`) drawn again in SwiftUI, so the hand-over
+/// from iOS's static image is seamless: same colour, same logo at its natural size, centred
+/// on the full screen as iOS centres it.
+private struct LaunchCover: View {
+    var body: some View {
+        ZStack {
+            Color("LaunchBackground")
+            Image("LaunchLogo")
+        }
+        .ignoresSafeArea()
+        .accessibilityElement()
+        .accessibilityLabel("Loading")
     }
 }
 

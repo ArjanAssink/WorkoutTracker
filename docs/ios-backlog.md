@@ -203,6 +203,17 @@ time. Recording here puts both on one workout, saved to Health by the app itself
   Things to check on the phone: readings during the lock, a strap that goes out of range and back,
   and whether Health shows HR statistics on the workout (if not, the backend still summarises the stream).
 
+### 14. Native launch screen; no web splash — written 2026-11-28
+The pages used to open behind an animated HTML splash that waited for the data, so the app
+"started" twice: iOS's blank launch screen, then the web splash. The web splash is gone from
+every page (the home-screen web app keeps its `apple-touch-startup-image`s, which iOS shows only
+while it launches). The app now has a real launch screen — `UILaunchScreen` in `Info.plist`,
+brand blue (`LaunchBackground`) and the logo (`LaunchLogo`, 112 pt, from `icon-v1-512.png`) —
+and `RootView`'s `LaunchCover` draws the same thing over the web view until its first load
+finishes or fails (8 s cap), then fades. Data still loads after that, inside the page.
+- *Done when:* a cold start goes logo → dashboard with no white flash and no second splash.
+  *Inferred, not seen:* that the SwiftUI cover lines up exactly with iOS's launch image.
+
 ## Later (not MVP — pick by need)
 
 - **Source label.** The endpoint stamps pushes and notifications as "Health Auto Export". Let the
